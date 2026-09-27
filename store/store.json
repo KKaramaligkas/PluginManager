@@ -1,0 +1,245 @@
+{
+  "storeInfo": {
+    "title": "FasterARK Plugin Store",
+    "author": "FasterARK powerup",
+    "description": "Plugins, homebrew and emulators for ARK-5, installed with one button.",
+    "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
+    "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
+    "version": 1,
+    "revision": 1
+  },
+  "entries": [
+    {
+      "id": "pluginmanager",
+      "title": "Plugin Manager",
+      "author": "FasterARK powerup",
+      "version": "1.0.0",
+      "category": "utility",
+      "license": "GPL-3.0",
+      "website": "https://github.com/kkaramaligkas/fasterark_powerup",
+      "icon": "pluginmanager.png",
+      "description": "This app. Browse, install, update and remove plugins and homebrew for ARK-5 without a PC. Installed plugins also show up in the XMB under the Plugins category.",
+      "install": [
+        { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/download/latest/PluginManager.zip", "file": "PluginManager.zip" },
+        { "type": "extract", "file": "PluginManager.zip", "input": "PSP/APPS/PluginManager/", "output": "%APPS%PluginManager/" },
+        { "type": "message", "text": "Plugin Manager was updated. Restart it to use the new version." }
+      ]
+    },
+    {
+      "id": "xmbih",
+      "title": "XMB Item Hider",
+      "author": "Frostegater, wad11656 & Exceen",
+      "version": "1.8",
+      "category": "plugin",
+      "runlevel": "vsh",
+      "license": "GPL-3.0",
+      "website": "https://github.com/wad11656/XMB-Item-Hider-PSP",
+      "icon": "xmbih.png",
+      "size": 54591,
+      "updated": "2026-09-05",
+      "description": "Hide any XMB item, or whole XMB categories such as Network. Edit SEPLUGINS/xmbih.ini and set an item to 1 to hide it, or a HIDE_ALL_ category to 2 to remove the category. Also relocates ARK's Extras items and can start the XMB on the Memory Stick. Tested on ARK-4 and ARK-5.",
+      "notes": "Setting HIDE_ALL_PSN = 2 also hides the Plugins category, which uses the PlayStation Network slot.",
+      "install": [
+        { "type": "download", "url": "https://github.com/wad11656/XMB-Item-Hider-PSP/releases/download/v1.8/xmbitemhider_v1.8.zip", "file": "xmbih.zip", "sha256": "29226b3abdc4fd2a08845f22ca019614bdf07cc0412a54b303f19aa4af35469c" },
+        { "type": "extract", "file": "xmbih.zip", "input": "SEPLUGINS/", "output": "%SEPLUGINS%", "include": ["xmbih.prx", "xmbih.ini"], "keep": ["xmbih.ini"] },
+        { "type": "plugin", "path": "%SEPLUGINS%xmbih.prx", "runlevel": "vsh" },
+        { "type": "message", "text": "Edit SEPLUGINS/xmbih.ini to choose what to hide." }
+      ]
+    },
+    {
+      "id": "gclite",
+      "title": "Game Categories Lite",
+      "author": "codestation, ticky & wad11656",
+      "version": "1.83",
+      "category": "plugin",
+      "runlevel": "vsh",
+      "license": "GPL-3.0",
+      "website": "https://github.com/wad11656/game-categories-lite",
+      "icon": "gclite.png",
+      "size": 31523,
+      "updated": "2026-09-05",
+      "description": "Organize your games and homebrew into categories. Create folders named CAT_Something inside PSP/GAME or ISO and they appear as categories in the Game column. Configure it in XMB > Settings > System Settings. This build is compatible with XMB Item Hider.",
+      "install": [
+        { "type": "download", "url": "https://github.com/wad11656/game-categories-lite/releases/download/v1.83/Categories.Lite.v1.83.zip", "file": "gclite.zip", "sha256": "60b263dcb95e58afe2dfdbffbea5be79b5bec3a2ae16d437cec5dc23676a3b7a" },
+        { "type": "extract", "file": "gclite.zip", "input": "SEPLUGINS/", "output": "%SEPLUGINS%", "include": "category_lite.prx" },
+        { "type": "plugin", "path": "%SEPLUGINS%category_lite.prx", "runlevel": "vsh", "position": "first" }
+      ]
+    },
+    {
+      "id": "cheatdevice",
+      "title": "CheatDevice Remastered",
+      "author": "Freakler",
+      "version": "1.0h3",
+      "category": "plugin",
+      "runlevel": "GTA LCS/VCS",
+      "license": "GPL-3.0",
+      "website": "https://github.com/Freakler/CheatDeviceRemastered",
+      "icon": "cheatdevice.png",
+      "size": 560229,
+      "updated": "2026-03-27",
+      "description": "The ultimate cheat and mod menu for GTA Liberty City Stories and GTA Vice City Stories, including user scripts, teleports, an editor and much more. It is only loaded for the supported game IDs. On a PSP-1000 the Lite version is installed automatically.",
+      "install": [
+        { "type": "download", "url": "https://github.com/Freakler/CheatDeviceRemastered/releases/download/v1.0h3/cheatdevice_remastered_v10h3.zip", "file": "cdr.zip", "sha256": "a57511308b21a1ae14270a657f5c98680d4c8152fb3062cb19eff037cf673f04" },
+        { "type": "extract", "file": "cdr.zip", "input": "cheatdevice_remastered/", "output": "%PSPPLUGINS%cheatdevice_remastered/", "exclude": "cdr_compat_loader.prx" },
+        { "type": "plugin", "if": { "notModel": "1000" }, "path": "%PSPPLUGINS%cheatdevice_remastered/cheatdevice_remastered.prx", "runlevel": "ULUS10041 ULES00182 ULES00151 ULUS10160 ULES00502 ULES00503 ULUS01826 ULUS11826 ULUX80146 ULET00417" },
+        { "type": "plugin", "if": { "model": "1000" }, "path": "%PSPPLUGINS%cheatdevice_remastered/cheatdevice_remastered_lite.prx", "runlevel": "ULUS10041 ULES00182 ULES00151 ULUS10160 ULES00502 ULES00503 ULUS01826 ULUS11826 ULUX80146 ULET00417" },
+        { "type": "message", "text": "Set CPU Clock in Game to 333 in the Custom Firmware Settings for a smoother experience." }
+      ]
+    },
+    {
+      "id": "tempar",
+      "title": "TempAR",
+      "author": "raing3",
+      "version": "1.6.4",
+      "category": "plugin",
+      "runlevel": "game, pops",
+      "license": "GPL-3.0",
+      "website": "https://github.com/raing3/tempar",
+      "icon": "tempar.png",
+      "size": 909307,
+      "updated": "2022-10-03",
+      "description": "A complete cheat device for PSP and PS1 games (rewrite of NitePR/MKULTRA) with CWCheat and Action Replay code support, searcher, memory editor and more. Press R + HOME in game to open the menu.",
+      "install": [
+        { "type": "download", "url": "https://github.com/raing3/tempar/releases/download/v1.6.4/tempar-1.6.4.tar.gz", "file": "tempar.tar.gz", "sha256": "2ee009637d3a3a0699b0384c19c4afa66b7174c3046ef0b9f1df41aa9c92ba67" },
+        { "type": "extract", "file": "tempar.tar.gz", "input": "seplugins/TempAR/", "output": "%SEPLUGINS%TempAR/" },
+        { "type": "plugin", "path": "%SEPLUGINS%TempAR/tempar.prx", "runlevel": "game" },
+        { "type": "plugin", "path": "%SEPLUGINS%TempAR/tempar_lite.prx", "runlevel": "pops" }
+      ]
+    },
+    {
+      "id": "cddaenabler",
+      "title": "CDDA Enabler",
+      "author": "Total_Noob",
+      "version": "2",
+      "category": "plugin",
+      "runlevel": "pops",
+      "license": "GPL-3.0",
+      "website": "https://github.com/ticky/cdda_enabler",
+      "icon": "cddaenabler.png",
+      "size": 17003,
+      "updated": "2015-01-24",
+      "description": "Enables CDDA (CD audio) tracks in homemade PS1 EBOOTs on every firmware after 4.01, without needing POPSLoader.",
+      "install": [
+        { "type": "download", "url": "https://github.com/ticky/cdda_enabler/releases/download/v2/cdda_enabler.rar", "file": "cdda_enabler.rar", "sha256": "d9fb28bfb058963be536add80df67577afe85e1c6aef32045ab9dfabe3610421" },
+        { "type": "extract", "file": "cdda_enabler.rar", "input": "cdda_enabler/", "output": "%SEPLUGINS%", "include": "cdda_enabler.prx" },
+        { "type": "plugin", "path": "%SEPLUGINS%cdda_enabler.prx", "runlevel": "pops" }
+      ]
+    },
+    {
+      "id": "zerovsh",
+      "title": "ZeroVSH Patcher",
+      "author": "NightStar3 & codestation",
+      "version": "0.4",
+      "category": "plugin",
+      "runlevel": "vsh",
+      "license": "GPL-3.0",
+      "website": "https://github.com/NightStar3/zerovsh-patcher",
+      "icon": "zerovsh.png",
+      "size": 27783,
+      "updated": "2015-03-28",
+      "description": "Customize the XMB without writing to flash0: files placed in PSP/VSH are loaded instead of the ones in flash0. Also enables the PSP Go clock and calendar on other models (not on PSP-1000).",
+      "install": [
+        { "type": "download", "url": "https://github.com/NightStar3/zerovsh-patcher/releases/download/0.4/ZeroVSH_Patcher_v0.4.BIN.NO_MODULES.zip", "file": "zerovsh.zip", "sha256": "99643b241168dee49422f8a3e8429332dea00302d9879f0e3e9e2ee9b65266a4" },
+        { "type": "extract", "file": "zerovsh.zip", "input": "ZeroVSH_Patcher_v0.4[BIN][NO_MODULES]/bin/", "output": "%SEPLUGINS%", "include": ["zerovsh_patcher.prx", "zerovsh.ini"], "keep": "zerovsh.ini" },
+        { "type": "mkdir", "path": "%VSH%" },
+        { "type": "plugin", "path": "%SEPLUGINS%zerovsh_patcher.prx", "runlevel": "vsh" },
+        { "type": "message", "text": "Put the replacement flash0 files in PSP/VSH and restart the XMB." }
+      ]
+    },
+    {
+      "id": "remotejoylite",
+      "title": "RemoteJoyLite",
+      "author": "Kethen (original by Hiroki)",
+      "version": "2026-01-06",
+      "category": "plugin",
+      "runlevel": "vsh, game, pops",
+      "license": "GPL-2.0",
+      "website": "https://github.com/Kethen/RemoteJoyLite",
+      "icon": "remotejoylite.png",
+      "size": 9504812,
+      "updated": "2026-01-06",
+      "description": "Stream the PSP screen to your computer over USB and control the PSP with a PC gamepad. Needs the RemoteJoyLite PC client from the GitHub release. Disable Use Extra Memory, Inferno Cache and Memory Stick Speedup on PSP-2000 and newer.",
+      "install": [
+        { "type": "download", "url": "https://github.com/Kethen/RemoteJoyLite/releases/download/2026-01-06/RemoteJoyLite_a0bc706a.zip", "file": "rjl.zip", "sha256": "93c6c739e05a5008e753f5b0982f78130bbc863bae9f3668349919ed8ba68768" },
+        { "type": "extract", "file": "rjl.zip", "input": "psp/", "output": "%SEPLUGINS%", "include": "RemoteJoyLite.prx" },
+        { "type": "plugin", "path": "%SEPLUGINS%RemoteJoyLite.prx", "runlevel": ["vsh", "game", "pops"] }
+      ]
+    },
+    {
+      "id": "aemu",
+      "title": "PRO Online (aemu)",
+      "author": "Kethen and the PRO Online team",
+      "version": "2026-09-12",
+      "category": "plugin",
+      "runlevel": "game",
+      "license": "GPL-3.0",
+      "website": "https://github.com/Kethen/aemu",
+      "icon": "aemu.png",
+      "size": 2961611,
+      "updated": "2026-09-12",
+      "description": "Play ad-hoc multiplayer games online over the internet, with other PSPs, PS Vitas and PPSSPP. Write the SSID of your Wi-Fi hotspot into SEPLUGINS/hotspot.txt after installing. Recommended settings: CPU Clock in Game 333, Use Extra Memory Auto, Memory Stick Speedup Off, Inferno Cache Off, WLAN Power Save Off.",
+      "install": [
+        { "type": "download", "url": "https://github.com/Kethen/aemu/releases/download/2026-09-12/aemu_5716a34e.zip", "file": "aemu.zip", "sha256": "82346560aa9e61281e076c011389a801307bafc166d69d9de840515ae5d203c9" },
+        { "type": "extract", "file": "aemu.zip", "input": "dist_660_release/", "output": "%ROOT%", "include": ["kd/*", "seplugins/*"], "keep": ["seplugins/*.txt"] },
+        { "type": "delete", "path": "%ROOT%kd/pspnet_miniupnc.prx" },
+        { "type": "plugin", "path": "%SEPLUGINS%atpro.prx", "runlevel": "game" },
+        { "type": "message", "text": "Write your hotspot SSID into SEPLUGINS/hotspot.txt." },
+        { "type": "message", "if": { "model": "go" }, "text": "PSP Go: aemu also expects kd/ and seplugins/ on the other storage device." }
+      ]
+    },
+    {
+      "id": "cmfilemanager",
+      "title": "CMFileManager",
+      "author": "joel16",
+      "version": "4.12",
+      "category": "utility",
+      "license": "GPL-3.0",
+      "website": "https://github.com/joel16/CMFileManager-PSP",
+      "icon": "cmfilemanager.png",
+      "size": 2648443,
+      "updated": "2025-04-24",
+      "description": "A full featured file manager: copy, move, rename and delete files, extract zip/7z/rar/tar archives, view images, play music, edit text files and browse over FTP.",
+      "install": [
+        { "type": "download", "if": { "notModel": "go" }, "url": "https://github.com/joel16/CMFileManager-PSP/releases/download/v4.12/CMFileManager-PSP.zip", "file": "cmfm.zip", "sha256": "498c5e24f1d10696b3faa848da9fa2e08a67e02aac8fd7c553199dcdcc54e678" },
+        { "type": "download", "if": { "model": "go" }, "url": "https://github.com/joel16/CMFileManager-PSP/releases/download/v4.12/CMFileManager-PSP-GO-M2.zip", "file": "cmfm.zip", "sha256": "5ca159e68cd48a6f3f17afac8f7bd14ad6f1800dc1db64beb983c1fea0b87eb4" },
+        { "type": "extract", "file": "cmfm.zip", "input": "PSP/GAME/CMFileManager/", "output": "%GAME%CMFileManager/" }
+      ]
+    },
+    {
+      "id": "daedalusx64",
+      "title": "DaedalusX64",
+      "author": "DaedalusX64 team",
+      "version": "1.1.8",
+      "category": "emulator",
+      "license": "GPL-2.0",
+      "website": "https://github.com/DaedalusX64/daedalus",
+      "icon": "daedalusx64.png",
+      "size": 35895692,
+      "updated": "2019-10-23",
+      "description": "The Nintendo 64 emulator for the PSP, with Media Engine accelerated audio. Put your ROMs in PSP/GAME/DaedalusX64/Roms.",
+      "install": [
+        { "type": "download", "url": "https://github.com/DaedalusX64/daedalus/releases/download/1.1.8/DaedalusX64_1_1_8.zip", "file": "daedalus.zip", "sha256": "7e734cb48ba092b44a60c61218c5d6789a23db43f4909beb8cb1a783fe658224" },
+        { "type": "extract", "file": "daedalus.zip", "input": "DaedalusX64/", "output": "%GAME%DaedalusX64/" },
+        { "type": "mkdir", "path": "%GAME%DaedalusX64/Roms/" },
+        { "type": "message", "text": "Copy your N64 ROMs to PSP/GAME/DaedalusX64/Roms." }
+      ]
+    },
+    {
+      "id": "psplink",
+      "title": "PSPLink",
+      "author": "pspdev",
+      "version": "3.2.1",
+      "category": "utility",
+      "license": "BSD-3-Clause",
+      "website": "https://github.com/pspdev/psplinkusb",
+      "icon": "psplink.png",
+      "size": 145750,
+      "updated": "2025-07-06",
+      "description": "Developer tool: run and debug homebrew straight from your computer over USB with pspsh, usbhostfs and GDB.",
+      "install": [
+        { "type": "download", "url": "https://github.com/pspdev/psplinkusb/releases/download/v3.2.1/psplink.zip", "file": "psplink.zip", "sha256": "721be3c1dd4f82f9ac9b76183651af993de23cd8dfdcd0b85ece109697a92bec" },
+        { "type": "extract", "file": "psplink.zip", "input": "psplink/", "output": "%GAME%psplink/", "keep": "psplink.ini" }
+      ]
+    }
+  ]
+}
