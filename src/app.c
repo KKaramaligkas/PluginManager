@@ -64,13 +64,19 @@ void app_init_paths(const char *argv0)
     set_path(app.icons_dir, sizeof(app.icons_dir), app.data_dir, "icons/");
     set_path(app.temp_dir, sizeof(app.temp_dir), app.data_dir, "tmp/");
     set_path(app.xmb_index, sizeof(app.xmb_index), app.data_dir, "xmbnames.txt");
-    set_path(app.xmb_flag, sizeof(app.xmb_flag), app.data_dir, "noxmbcat");
+    set_path(app.xmb_on_flag, sizeof(app.xmb_on_flag), app.data_dir, "xmbcat");
+    set_path(app.xmb_off_flag, sizeof(app.xmb_off_flag), app.data_dir, "noxmbcat");
     set_path(app.launch_file, sizeof(app.launch_file), app.data_dir, "launch.txt");
     set_path(app.ca_file, sizeof(app.ca_file), app.app_dir, "cacert.pem");
     set_path(app.bundled_store, sizeof(app.bundled_store), app.app_dir, "store.json");
 
     fs_mkdirs(app.data_dir, NULL, NULL);
     fs_mkdirs(app.icons_dir, NULL, NULL);
+
+    /* the XMB "Plugins" category is off until turned on in the settings,
+       also for ARK 5.1.2's XMBControl (see app_set_xmb_category) */
+    if (!app_xmb_category_enabled() && !fs_exists(app.xmb_off_flag))
+        fs_write_all(app.xmb_off_flag, "1", 1);
 
     app.has_ms = fs_is_dir("ms0:/");
     app.has_ef = fs_is_dir("ef0:/");
@@ -404,13 +410,22 @@ void app_fill_install_ctx(install_ctx *ctx)
 
 int app_xmb_category_enabled(void)
 {
-    return !fs_exists(app.xmb_flag);
+    return fs_exists(app.xmb_on_flag);
 }
 
+/* XMBControl shows the "Plugins" category only when data/xmbcat exists. The
+   one in ARK 5.1.2 showed it unless data/noxmbcat existed, so both files are
+   kept in step. */
 void app_set_xmb_category(int enabled)
 {
-    if (enabled) fs_remove(app.xmb_flag);
-    else fs_write_all(app.xmb_flag, "1", 1);
+    if (enabled) {
+        fs_write_all(app.xmb_on_flag, "1", 1);
+        fs_remove(app.xmb_off_flag);
+    }
+    else {
+        fs_remove(app.xmb_on_flag);
+        fs_write_all(app.xmb_off_flag, "1", 1);
+    }
 }
 
 int app_read_launch_request(char *kind, int kind_len, char *value, int value_len)

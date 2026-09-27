@@ -9,8 +9,8 @@ FasterARK and is listed in three places:
   column, or in Game on regions without Extras).
 - **Custom Launcher**, with the other apps (the app lives in
   `PSP/APPS/PluginManager`).
-- **XMB → Plugins**, a category that lists your installed plugins
-  ([details below](#the-plugins-category)).
+- **XMB → Plugins**, an optional category that lists your installed plugins.
+  It's off by default ([details below](#the-plugins-category)).
 
 ## Installing
 
@@ -48,7 +48,7 @@ Settings:
 - **Store address**: the default store, or any other store served over https.
 - **Install to** (PSP Go with a memory stick): the memory stick or the
   internal storage.
-- **"Plugins" category in the XMB**: on or off.
+- **"Plugins" category in the XMB**: off by default.
 - **Verify HTTPS certificates**: keep this on. Turn it off only if the PSP's
   clock can't be set, because it makes downloads open to tampering.
 - **Refresh the store at startup** and **Clear downloaded icons**.
@@ -77,11 +77,14 @@ columns shows how easily that freezes the XMB, and it can't be done safely
 without testing on real hardware. It could be tried later as an experimental
 option.
 
-To turn the category off, use **Settings → "Plugins" category in the XMB**,
-then restart the XMB. If the XMB ever fails to start because of it, hold
-**START** while the XMB loads. The column is then left untouched, the same
-button ARK uses to boot without plugins, so you can open the app and turn the
-category off.
+The category is off by default, because the XMB can't be emulated and it
+hasn't been tested on a real PSP yet. To turn it on, use **Settings →
+"Plugins" category in the XMB**, then restart the XMB. Turn it off the same
+way.
+
+If the XMB ever fails to start with the category on, hold **START** while the
+XMB loads. The column is then left untouched, and ARK uses the same button to
+boot without plugins. You can then open the app and turn the category off.
 
 XMB Item Hider's `HIDE_ALL_PSN = 2` hides the Plugins category along with the
 PlayStation Network column.
@@ -100,7 +103,8 @@ Everything lives in `PSP/APPS/PluginManager/`:
 | `data/store.json`, `data/icons/` | last downloaded store and its icons |
 | `data/xmbnames.txt` | plugin list read by XMBControl for the Plugins category |
 | `data/launch.txt` | written by XMBControl: the plugin to open |
-| `data/noxmbcat` | present when the Plugins category is turned off |
+| `data/xmbcat` | present when the Plugins category is turned on |
+| `data/noxmbcat` | present when it's off, for ARK 5.1.2's XMBControl, which shows the category unless this file exists |
 
 ## Store format
 

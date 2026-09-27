@@ -6,19 +6,19 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 2
+    "revision": 3
   },
   "entries": [
     {
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
       "icon": "pluginmanager.png",
-      "description": "This app. Browse, install, update and remove plugins and homebrew for ARK-5 without a PC. Installed plugins also show up in the XMB under the Plugins category.",
+      "description": "This app. Browse, install, update and remove plugins and homebrew for ARK-5 without a PC. Your plugins can also be listed in the XMB, in a Plugins category you turn on in the settings.",
       "install": [
         { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/latest/download/PluginManager.zip", "file": "PluginManager.zip" },
         { "type": "extract", "file": "PluginManager.zip", "input": "PSP/APPS/PluginManager/", "output": "%APPS%PluginManager/" },

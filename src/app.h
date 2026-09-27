@@ -58,7 +58,8 @@ typedef struct {
     char ca_file[200];
     char bundled_store[200];
     char xmb_index[200];
-    char xmb_flag[200];
+    char xmb_on_flag[200];
+    char xmb_off_flag[200];
     char launch_file[200];
     char ark_path[128];
     int model;
