@@ -16,7 +16,7 @@ FasterARK and is listed in three places:
 
 - The `Full` variant of FasterARK (`FasterARK_psp_full.zip`) includes it.
 - Otherwise extract `PluginManager.zip` from the
-  [release](https://github.com/kkaramaligkas/fasterark_powerup/releases/tag/latest)
+  [latest release](https://github.com/kkaramaligkas/fasterark_powerup/releases/latest)
   to the root of the memory stick, or to the internal storage of a PSP Go.
   The XMB entries need ARK-5 with FasterARK's `FLASH0.ARK` (any variant, or
   the updater). The app itself runs on any ARK.
