@@ -15,6 +15,10 @@ FasterARK and is listed in three places:
 ## Installing
 
 - The `Full` variant of FasterARK (`FasterARK_psp_full.zip`) includes it.
+- On a PSP, the ARK updater (`ARK_UPDATE.zip`, from ARK 5.1.5) installs or
+  updates it. It replaces the copy that's already there (internal storage
+  first), or installs it on the device that holds ARK's folder. The app's
+  `data` folder, with its settings and the list of installed plugins, is kept.
 - Otherwise extract `PluginManager.zip` from the
   [latest release](https://github.com/kkaramaligkas/fasterark_powerup/releases/latest)
   to the root of the memory stick, or to the internal storage of a PSP Go.
@@ -64,7 +68,8 @@ Error `80020190` means the PSP ran out of memory.
 Versions 1.0.0 and 1.0.1 left almost no memory for the PSP's network
 libraries, so on a real PSP they stayed *Offline*. Emulators don't load those
 libraries, which is why testing missed it. The store can't update a copy that
-can't connect: extract `PluginManager.zip` from the latest release by hand.
+can't connect: run the ARK updater (5.1.5 or later), or extract
+`PluginManager.zip` from the latest release by hand.
 
 ## The Plugins category
 
