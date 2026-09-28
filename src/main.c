@@ -1591,6 +1591,7 @@ int main(int argc, char *argv[])
     app_settings_load();
     app_db_load();
     net_set_tls(app.ca_file, app.cfg.verify_tls);
+    net_set_report_file(app.tls_report);
 
     app_load_offline_store();
     rebuild_list();

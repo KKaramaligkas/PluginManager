@@ -35,6 +35,8 @@ int net_connect_dialog(void (*draw)(void *ud), void *ud);
 
 /* TLS settings: CA bundle (PEM) and whether certificates are verified. */
 void net_set_tls(const char *ca_file, int verify);
+/* Where the details of a failed certificate check are written. */
+void net_set_report_file(const char *path);
 
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen);
 /* Downloads into memory (NUL terminated). */

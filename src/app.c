@@ -67,6 +67,7 @@ void app_init_paths(const char *argv0)
     set_path(app.xmb_on_flag, sizeof(app.xmb_on_flag), app.data_dir, "xmbcat");
     set_path(app.xmb_off_flag, sizeof(app.xmb_off_flag), app.data_dir, "noxmbcat");
     set_path(app.launch_file, sizeof(app.launch_file), app.data_dir, "launch.txt");
+    set_path(app.tls_report, sizeof(app.tls_report), app.data_dir, "tls_error.txt");
     set_path(app.ca_file, sizeof(app.ca_file), app.app_dir, "cacert.pem");
     set_path(app.bundled_store, sizeof(app.bundled_store), app.app_dir, "store.json");
 

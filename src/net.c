@@ -10,6 +10,10 @@
     (main.c keeps room for them). Every setup step is checked and the first
     failure is kept for net_last_error(), so a failed connection tells the
     user why instead of just leaving the app "Offline".
+
+    A certificate that fails the check is explained in the error (tlsdiag.c),
+    and the details go to a report file, with the PSP's clock as read by the
+    check and by the kernel. The check's clock comes from the RTC (clock.c).
 */
 
 #include <stdio.h>
@@ -21,8 +25,11 @@
 #include <pspnet_apctl.h>
 #include <pspnet_inet.h>
 #include <pspnet_resolver.h>
+#include <psprtc.h>
 #include <psputility.h>
+#include <psputils.h>
 #include <pspwlan.h>
+#include <time.h>
 
 #include <curl/curl.h>
 #include <mbedtls/ssl.h>
@@ -31,8 +38,13 @@
 #include "fs.h"
 #include "gfx.h"
 #include "net.h"
+#include "tlsdiag.h"
 #include "util.h"
 #include "version.h"
+
+_Static_assert(TLSDIAG_EXPIRED == MBEDTLS_X509_BADCERT_EXPIRED && TLSDIAG_REVOKED == MBEDTLS_X509_BADCERT_REVOKED &&
+               TLSDIAG_NAME == MBEDTLS_X509_BADCERT_CN_MISMATCH && TLSDIAG_NOT_TRUSTED == MBEDTLS_X509_BADCERT_NOT_TRUSTED &&
+               TLSDIAG_FUTURE == MBEDTLS_X509_BADCERT_FUTURE, "tlsdiag flags must match mbedTLS");
 
 /* sceUtilityLoadModule() error for a module that is already loaded */
 #define UTILITY_MODULE_ALREADY_LOADED   0x80111102
@@ -58,9 +70,11 @@ static int steps;
 static int inited;
 static char last_error[200];
 static char ca_path[PM_PATH_MAX];
+static char report_path[PM_PATH_MAX];
 static int tls_verify = 1;
 static mbedtls_x509_crt ca_chain;
 static int ca_state;            /* 0 not loaded, 1 loaded, -1 failed */
+static int ca_parse_result, ca_count;   /* for the report file */
 static SceUID ca_lock = -1;
 
 static int fail(const char *what, int code)
@@ -232,6 +246,11 @@ void net_set_tls(const char *ca_file, int verify)
     tls_verify = verify;
 }
 
+void net_set_report_file(const char *path)
+{
+    pm_strlcpy(report_path, path ? path : "", sizeof(report_path));
+}
+
 static int load_ca(void)
 {
     if (ca_state) return ca_state;
@@ -242,18 +261,113 @@ static int load_ca(void)
         int r = ca_path[0] ? mbedtls_x509_crt_parse_file(&ca_chain, fs_native_path(ca_path, native, sizeof(native))) : -1;
         /* r > 0 means some certificates were skipped, which is fine */
         ca_state = (r >= 0 && ca_chain.version != 0) ? 1 : -1;
+        ca_parse_result = r;
+        ca_count = 0;
+        for (const mbedtls_x509_crt *c = &ca_chain; ca_state > 0 && c && c->version; c = c->next) ca_count++;
         if (ca_state < 0) mbedtls_x509_crt_free(&ca_chain);
     }
     sceKernelSignalSema(ca_lock, 1);
     return ca_state;
 }
 
+static void copy_time(tlsdiag_time *out, const mbedtls_x509_time *t)
+{
+    out->year = t->year;
+    out->month = t->mon;
+    out->day = t->day;
+    out->hour = t->hour;
+    out->minute = t->min;
+    out->second = t->sec;
+}
+
+/* Called by mbedTLS for every certificate of the chain it checked, from the
+   top down to the server's own (depth 0). Records them without changing the
+   verdict. */
+static int verify_cb(void *p, mbedtls_x509_crt *crt, int depth, uint32_t *flags)
+{
+    tlsdiag *d = p;
+    if (depth >= 0 && depth < TLSDIAG_MAX_CERTS) {
+        tlsdiag_cert *c = &d->certs[depth];
+        c->flags = *flags;
+        if (mbedtls_x509_dn_gets(c->subject, sizeof(c->subject), &crt->subject) < 0) c->subject[0] = 0;
+        if (mbedtls_x509_dn_gets(c->issuer, sizeof(c->issuer), &crt->issuer) < 0) c->issuer[0] = 0;
+        copy_time(&c->valid_from, &crt->valid_from);
+        copy_time(&c->valid_to, &crt->valid_to);
+        if (d->count < depth + 1) d->count = depth + 1;
+    }
+    d->flags |= *flags;
+    return 0;
+}
+
 static CURLcode sslctx_cb(CURL *curl, void *sslctx, void *parm)
 {
     (void)curl;
-    (void)parm;
     mbedtls_ssl_conf_ca_chain((mbedtls_ssl_config *)sslctx, &ca_chain, NULL);
+    if (parm) {
+        /* each connection (a redirect opens a new one) starts a new record */
+        tlsdiag *d = parm;
+        memset(d, 0, sizeof(*d));
+        mbedtls_ssl_conf_verify((mbedtls_ssl_config *)sslctx, verify_cb, d);
+    }
     return CURLE_OK;
+}
+
+/* The PSP's clock as the certificate check read it (time()), in local time. */
+static void clock_text(time_t now, char *out, int size)
+{
+    int tz = 0, dst = 0;
+    sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_TIMEZONE, &tz);
+    sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_DAYLIGHTSAVINGS, &dst);
+    if (now != (time_t)-1) now += (time_t)tz * 60 + (dst ? 3600 : 0);
+    tlsdiag_format_time(now, 1, out, size);
+}
+
+static void rtc_text(const ScePspDateTime *t, char *out, int size)
+{
+    snprintf(out, size, "%04d-%02d-%02d %02d:%02d:%02d", t->year, t->month, t->day, t->hour, t->minute, t->second);
+}
+
+/* Writes the details of a failed certificate check to the report file. */
+static void write_report(const char *url, const tlsdiag *d)
+{
+    if (!report_path[0]) return;
+    char *buf = malloc(4096);
+    if (!buf) return;
+
+    time_t now = time(NULL);
+    struct tm tm;
+    char utc[32] = "unreadable", kernel[32] = "?", rtc_utc[40] = "?", rtc_local[40] = "?";
+    if (now != (time_t)-1 && gmtime_r(&now, &tm))
+        strftime(utc, sizeof(utc), "%Y-%m-%d %H:%M:%S", &tm);
+    /* what the SDK's time() would have said */
+    SceKernelTimeval ktv;
+    memset(&ktv, 0, sizeof(ktv));
+    int kr = sceKernelLibcGettimeofday(&ktv, NULL);
+    time_t kt = (time_t)ktv.tv_sec;
+    if (kr >= 0 && gmtime_r(&kt, &tm))
+        strftime(kernel, sizeof(kernel), "%Y-%m-%d %H:%M:%S", &tm);
+    ScePspDateTime dt;
+    int r1 = sceRtcGetCurrentClock(&dt, 0);
+    if (r1 >= 0) rtc_text(&dt, rtc_utc, sizeof(rtc_utc));
+    int r2 = sceRtcGetCurrentClockLocalTime(&dt);
+    if (r2 >= 0) rtc_text(&dt, rtc_local, sizeof(rtc_local));
+    int tz = 0, dst = 0;
+    sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_TIMEZONE, &tz);
+    sceUtilityGetSystemParamInt(PSP_SYSTEMPARAM_ID_INT_DAYLIGHTSAVINGS, &dst);
+
+    int len = snprintf(buf, 4096,
+                       "Plugin Manager %s: a certificate check failed\n"
+                       "URL: %s\n"
+                       "Clock used by the check: %lld = %s UTC\n"
+                       "Kernel libc clock (not used): %u = %s (%d)\n"
+                       "RTC: %s UTC (%d), %s local (%d)\n"
+                       "Time zone: %+d minutes, daylight saving: %d\n"
+                       "Trusted authorities: %d loaded from %s (parse result %d)\n\n",
+                       PM_VERSION, url ? url : "?", (long long)now, utc, (unsigned)ktv.tv_sec, kernel, kr,
+                       rtc_utc, r1, rtc_local, r2, tz, dst, ca_count, ca_path, ca_parse_result);
+    if (len > 0 && len < 4096) len += tlsdiag_report(d, buf + len, 4096 - len);
+    if (len > 0) fs_write_all(report_path, buf, len < 4096 ? len : 4095);
+    free(buf);
 }
 
 typedef struct {
@@ -263,6 +377,7 @@ typedef struct {
     int too_big, write_error;
     net_progress_fn cb;
     void *ud;
+    tlsdiag tls;            /* the certificate check of the last connection */
 } xfer;
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
@@ -353,6 +468,7 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         curl_easy_setopt(c, CURLOPT_SSL_VERIFYHOST, 2L);
         curl_easy_setopt(c, CURLOPT_CAINFO, NULL);
         curl_easy_setopt(c, CURLOPT_CAPATH, NULL);
+        curl_easy_setopt(c, CURLOPT_SSL_CTX_DATA, &x->tls);
         if (curl_easy_setopt(c, CURLOPT_SSL_CTX_FUNCTION, sslctx_cb) != CURLE_OK) {
             char native[PM_PATH_MAX];
             curl_easy_setopt(c, CURLOPT_CAINFO, fs_native_path(ca_path, native, sizeof(native)));
@@ -366,6 +482,15 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     CURLcode res = curl_easy_perform(c);
     long code = 0;
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+    char *effective = NULL;
+    char failed_url[512] = "";
+    if (res == CURLE_PEER_FAILED_VERIFICATION) {
+        /* the URL of the connection that failed, which may be a redirect */
+        if (curl_easy_getinfo(c, CURLINFO_EFFECTIVE_URL, &effective) != CURLE_OK || !effective) effective = (char *)url;
+        pm_strlcpy(failed_url, effective, sizeof(failed_url));
+        failed_url[strcspn(failed_url, "?#")] = 0;     /* download links carry long signed queries */
+        tlsdiag_set_host(&x->tls, failed_url);
+    }
     curl_easy_cleanup(c);
 
     if (res == CURLE_OK) return 0;
@@ -386,9 +511,13 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     case CURLE_HTTP_RETURNED_ERROR:
         snprintf(err, errlen, "The server answered with error %ld", code);
         break;
-    case CURLE_PEER_FAILED_VERIFICATION:   /* == CURLE_SSL_CACERT since curl 7.62 */
-        snprintf(err, errlen, "Secure connection failed: the certificate couldn't be verified. Check the date and time of your PSP.");
+    case CURLE_PEER_FAILED_VERIFICATION: {   /* == CURLE_SSL_CACERT since curl 7.62 */
+        char clock[48];
+        clock_text(time(NULL), clock, sizeof(clock));
+        tlsdiag_message(&x->tls, clock, err, errlen);
+        write_report(failed_url, &x->tls);
         break;
+    }
     case CURLE_SSL_CONNECT_ERROR:
         snprintf(err, errlen, "Secure connection failed (%s)", errbuf[0] ? errbuf : "TLS error");
         break;

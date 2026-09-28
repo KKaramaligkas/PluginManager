@@ -11,6 +11,7 @@
 #include "../src/installer.h"
 #include "../src/pluginstxt.h"
 #include "../src/store.h"
+#include "../src/tlsdiag.h"
 #include "../src/util.h"
 #include "test.h"
 
@@ -383,6 +384,144 @@ static void test_db(void)
     db_free(&db);
 }
 
+static tlsdiag_time tt(int y, int mo, int d, int h, int mi, int s)
+{
+    tlsdiag_time t = { y, mo, d, h, mi, s };
+    return t;
+}
+
+static void set_cert(tlsdiag *d, int depth, uint32_t flags, const char *subject, const char *issuer,
+                     tlsdiag_time from, tlsdiag_time to)
+{
+    tlsdiag_cert *c = &d->certs[depth];
+    c->flags = flags;
+    pm_strlcpy(c->subject, subject, sizeof(c->subject));
+    pm_strlcpy(c->issuer, issuer, sizeof(c->issuer));
+    c->valid_from = from;
+    c->valid_to = to;
+    if (d->count < depth + 1) d->count = depth + 1;
+    d->flags |= flags;
+}
+
+static void test_tlsdiag(void)
+{
+    tlsdiag d;
+    char buf[600], small[40], name[16];
+
+    /* server names */
+    memset(&d, 0, sizeof(d));
+    tlsdiag_set_host(&d, "https://raw.githubusercontent.com/kkaramaligkas/x/main/store.json");
+    CHECK_STR(d.host, "raw.githubusercontent.com");
+    tlsdiag_set_host(&d, "https://user:pw@example.org:8443/path?q=1");
+    CHECK_STR(d.host, "example.org");
+    tlsdiag_set_host(&d, "https://[::1]:8443/");
+    CHECK_STR(d.host, "[::1]");
+    tlsdiag_set_host(&d, "example.org/path");
+    CHECK_STR(d.host, "example.org");
+    tlsdiag_set_host(&d, NULL);
+    CHECK_STR(d.host, "");
+    char longurl[400] = "https://";
+    memset(longurl + 8, 'a', 300);
+    longurl[308] = 0;
+    tlsdiag_set_host(&d, longurl);
+    CHECK_INT(strlen(d.host), sizeof(d.host) - 1);
+
+    /* names in certificates */
+    tlsdiag_common_name("C=US, O=Let's Encrypt, CN=YR1", buf, sizeof(buf));
+    CHECK_STR(buf, "YR1");
+    tlsdiag_common_name("C=GB, O=Sectigo Limited", buf, sizeof(buf));
+    CHECK_STR(buf, "Sectigo Limited");
+    tlsdiag_common_name("OU=Unit", buf, sizeof(buf));
+    CHECK_STR(buf, "OU=Unit");
+    tlsdiag_common_name("CN=*.github.io", buf, sizeof(buf));
+    CHECK_STR(buf, "*.github.io");
+    tlsdiag_common_name("C=GB, O=Sectigo Limited", name, 5);
+    CHECK_STR(name, "Sect");
+
+    /* the PSP's clock */
+    tlsdiag_format_time((time_t)1790618391, 1, buf, sizeof(buf));
+    CHECK_STR(buf, "28 Sep 2026, 17:59");
+    tlsdiag_format_time((time_t)1790618391, 0, buf, sizeof(buf));
+    CHECK_STR(buf, "28 Sep 2026");
+    tlsdiag_format_time((time_t)-1, 1, buf, sizeof(buf));
+    CHECK_STR(buf, "unreadable");
+
+    /* clock behind: the server's certificate isn't valid yet */
+    memset(&d, 0, sizeof(d));
+    tlsdiag_set_host(&d, "https://raw.githubusercontent.com/x");
+    set_cert(&d, 2, 0, "C=US, O=ISRG, CN=Root YR", "C=US, O=Internet Security Research Group, CN=ISRG Root X1",
+             tt(2026, 5, 13, 0, 0, 0), tt(2032, 9, 2, 23, 59, 59));
+    set_cert(&d, 1, TLSDIAG_FUTURE, "C=US, O=Let's Encrypt, CN=YR1", "C=US, O=ISRG, CN=Root YR",
+             tt(2025, 9, 3, 0, 0, 0), tt(2028, 9, 2, 23, 59, 59));
+    set_cert(&d, 0, TLSDIAG_FUTURE, "CN=*.github.io", "C=US, O=Let's Encrypt, CN=YR1",
+             tt(2026, 8, 2, 23, 38, 2), tt(2026, 10, 31, 23, 38, 1));
+    tlsdiag_message(&d, "28 Sep 2016, 20:59", buf, sizeof(buf));
+    CHECK_STR(buf, "The certificate of raw.githubusercontent.com is only valid from 2 Aug 2026, but your PSP's "
+                   "clock says 28 Sep 2016, 20:59. Set the date and time in Settings > Date & Time Settings.");
+    tlsdiag_report(&d, buf, sizeof(buf));
+    CHECK(strstr(buf, "Server: raw.githubusercontent.com\nProblems: 00000200 (not valid yet)\n") == buf);
+    CHECK(strstr(buf, "\nCertificate 0 (the server's): problems 00000200 (not valid yet)\n"
+                      "  Subject: CN=*.github.io\n  Issuer:  C=US, O=Let's Encrypt, CN=YR1\n"
+                      "  Valid:   2026-08-02 23:38:02 to 2026-10-31 23:38:01 UTC\n") != NULL);
+    CHECK(strstr(buf, "\nCertificate 2: problems 00000000\n") != NULL);
+
+    /* a time problem wins over the others */
+    d.certs[2].flags |= TLSDIAG_NOT_TRUSTED;
+    d.flags |= TLSDIAG_NOT_TRUSTED;
+    tlsdiag_message(&d, "28 Sep 2016, 20:59", buf, sizeof(buf));
+    CHECK(strstr(buf, "is only valid from 2 Aug 2026") != NULL);
+    tlsdiag_report(&d, buf, sizeof(buf));
+    CHECK(strstr(buf, "Problems: 00000208 (not valid yet, not trusted)\n") != NULL);
+
+    /* clock ahead */
+    memset(&d, 0, sizeof(d));
+    tlsdiag_set_host(&d, "https://github.com/a/b");
+    set_cert(&d, 0, TLSDIAG_EXPIRED, "CN=github.com", "C=GB, O=Sectigo Limited, CN=Sectigo Public Server Authentication CA DV E36",
+             tt(2026, 9, 1, 0, 0, 0), tt(2026, 11, 29, 23, 59, 59));
+    tlsdiag_message(&d, "5 Jan 2031, 10:00", buf, sizeof(buf));
+    CHECK_STR(buf, "The certificate of github.com expired on 29 Nov 2026, and your PSP's clock says 5 Jan 2031, 10:00. "
+                   "If that isn't today, set the date in Settings > Date & Time Settings.");
+
+    /* a login page answering for the server */
+    memset(&d, 0, sizeof(d));
+    tlsdiag_set_host(&d, "https://github.com/a/b");
+    set_cert(&d, 0, TLSDIAG_NAME | TLSDIAG_NOT_TRUSTED, "CN=login.hotspot.example", "CN=login.hotspot.example",
+             tt(2024, 1, 1, 0, 0, 0), tt(2034, 1, 1, 0, 0, 0));
+    tlsdiag_message(&d, "28 Sep 2026, 20:59", buf, sizeof(buf));
+    CHECK_STR(buf, "github.com answered with a certificate for \"login.hotspot.example\". The network may be "
+                   "redirecting secure connections (a hotspot's login page or a filter). PSP clock: 28 Sep 2026, 20:59.");
+
+    /* an authority that isn't trusted: the top of the chain names it */
+    memset(&d, 0, sizeof(d));
+    tlsdiag_set_host(&d, "https://github.com/a/b");
+    set_cert(&d, 1, TLSDIAG_NOT_TRUSTED, "C=US, O=Filter, CN=Filter Intermediate", "C=US, O=Filter Inc, CN=Filter Root CA",
+             tt(2024, 1, 1, 0, 0, 0), tt(2034, 1, 1, 0, 0, 0));
+    set_cert(&d, 0, 0, "CN=github.com", "C=US, O=Filter, CN=Filter Intermediate", tt(2026, 9, 1, 0, 0, 0),
+             tt(2026, 11, 29, 0, 0, 0));
+    tlsdiag_message(&d, "28 Sep 2026, 20:59", buf, sizeof(buf));
+    CHECK_STR(buf, "The certificate of github.com, issued by \"Filter Root CA\", isn't from a trusted authority. "
+                   "The network may be intercepting secure connections (a hotspot's login page or a filter). "
+                   "PSP clock: 28 Sep 2026, 20:59.");
+
+    /* nothing recorded (a problem found outside the chain check) */
+    memset(&d, 0, sizeof(d));
+    d.flags = 0x4000;
+    tlsdiag_message(&d, "unreadable", buf, sizeof(buf));
+    CHECK_STR(buf, "The certificate of the server was rejected (problems 00004000, details in data/tls_error.txt). "
+                   "PSP clock: unreadable.");
+    CHECK(tlsdiag_report(&d, buf, sizeof(buf)) == (int)strlen(buf));
+    CHECK_STR(buf, "Server: ?\nProblems: 00004000\n");
+
+    /* short buffers are cut, never overrun */
+    memset(&d, 0, sizeof(d));
+    tlsdiag_set_host(&d, "https://github.com/a/b");
+    set_cert(&d, 0, TLSDIAG_EXPIRED, "CN=github.com", "CN=x", tt(2020, 1, 1, 0, 0, 0), tt(2021, 1, 1, 0, 0, 0));
+    tlsdiag_message(&d, "28 Sep 2026, 20:59", small, sizeof(small));
+    CHECK_INT(strlen(small), sizeof(small) - 1);
+    CHECK(tlsdiag_report(&d, small, sizeof(small)) == (int)strlen(small));
+    CHECK_INT(strlen(small), sizeof(small) - 1);
+}
+
 int main(void)
 {
     if (!getenv("PM_FS_ROOT")) {
@@ -395,6 +534,7 @@ int main(void)
     test_paths();
     test_run_and_version();
     test_db();
+    test_tlsdiag();
     printf("test_core: %d checks, %d failures\n", test_checks, test_failures);
     return test_failures ? 1 : 0;
 }

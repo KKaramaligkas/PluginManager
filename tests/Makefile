@@ -9,7 +9,7 @@ CFLAGS  ?= -O1 -g -Wall -Wextra -Wno-unused-parameter -std=gnu99 -fsanitize=addr
 LDLIBS   = -lcjson -lunarr -lmbedcrypto -lz
 
 CORE     = ../src/util.c ../src/fs.c ../src/store.c ../src/pluginstxt.c ../src/db.c \
-           ../src/archive.c ../src/installer.c
+           ../src/archive.c ../src/installer.c ../src/tlsdiag.c
 SEED     = $(abspath ../store/store.json)
 WORK     = $(CURDIR)/work
 

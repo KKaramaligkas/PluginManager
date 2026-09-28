@@ -61,6 +61,7 @@ typedef struct {
     char xmb_on_flag[200];
     char xmb_off_flag[200];
     char launch_file[200];
+    char tls_report[200];       /* details of the last failed certificate check */
     char ark_path[128];
     int model;
     int has_ms, has_ef;

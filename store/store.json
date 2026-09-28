@@ -6,14 +6,14 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 5
+    "revision": 6
   },
   "entries": [
     {
       "id": "ark",
       "title": "ARK-5",
       "author": "PSP-Arkfive",
-      "version": "5.1.6",
+      "version": "5.1.7",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -31,7 +31,7 @@
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.3",
+      "version": "1.0.4",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",

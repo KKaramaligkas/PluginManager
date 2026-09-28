@@ -80,11 +80,26 @@ connections set up in *Settings → Network Settings*. If the network can't
 start, a message names the step that failed and gives the system error code.
 Error `80020190` means the PSP ran out of memory.
 
-Versions 1.0.0 and 1.0.1 left almost no memory for the PSP's network
-libraries, so on a real PSP they stayed *Offline*. Emulators don't load those
-libraries, which is why testing missed it. The store can't update a copy that
-can't connect: run the ARK updater (5.1.5 or later), or extract
-`PluginManager.zip` from the latest release by hand.
+When a secure connection fails, the message says why: a certificate that
+isn't valid yet or has expired (with its date and the PSP's clock), one
+issued for another server, or one from an authority the app doesn't trust.
+A hotspot's login page or a filter on the network causes the last two. The
+details go to `data/tls_error.txt`.
+
+Before 1.0.4 the app couldn't download anything on a real PSP:
+
+- 1.0.0 and 1.0.1 left almost no memory for the PSP's network libraries, so
+  they stayed *Offline*.
+- 1.0.2 and 1.0.3 read the date through the PSP SDK's C library, which asks
+  the kernel (`sceKernelLibcGettimeofday`). On a real PSP that returns only
+  the time of day, so the clock read 1 January 1970 and every certificate
+  looked like it wasn't valid yet. 1.0.4 reads the date from the RTC
+  (`src/clock.c`).
+
+Emulators don't load those libraries and return the full date, which is why
+testing missed both. The store can't update those copies: run the ARK
+updater (5.1.7 or later), or extract `PluginManager.zip` from the latest
+release by hand.
 
 ## The Plugins category
 
@@ -138,6 +153,7 @@ Everything lives in `PSP/APPS/PluginManager/`:
 | `data/launch.txt` | written by XMBControl: the plugin to open |
 | `data/xmbcat` | present when the Plugins category is turned on |
 | `data/noxmbcat` | present when it's off, for ARK 5.1.2's XMBControl, which shows the category unless this file exists |
+| `data/tls_error.txt` | details of the last certificate that was refused: the clocks, the trusted authorities loaded and each certificate of the chain |
 
 ## Store format
 
@@ -311,6 +327,11 @@ and on the PSP the socket functions would call the wrong system functions.
     `https://localhost:8443/`) and put its certificate authority in the
     emulated `cacert.pem`.
   - mbedTLS 2.28 can't match IP addresses in certificates, so use a host name.
+  - Certificates that aren't valid yet, have expired, come from an unknown
+    authority or name another server show each certificate error.
+  - PPSSPP's `sceKernelLibcGettimeofday` returns the full date, unlike a real
+    PSP's, so the emulator can't show a clock problem. To act like a PSP, make
+    it return `tv_sec % 86400`.
   - PPSSPP doesn't need the memory of the network libraries, but it reserves
     it and warns `No room for utility module` in its log when the app doesn't
     leave enough. The app keeps 4 MB free for them
@@ -323,18 +344,23 @@ What has been checked:
   - updating ARK: the version check, the download of `ARK_UPDATE.zip` from a
     local copy of the store, and the app closing to start the updater (PPSSPP
     has no ARK, so the start itself is left to a real console);
-  - the store and icons downloaded over TLS 1.2 with certificate checks;
+  - the store and icons downloaded over TLS 1.2 with certificate checks,
+    also with a clock that, like a real PSP's kernel, gives no date;
+  - the error for each kind of refused certificate;
+  - GitHub's real certificate chains, verified with the PSP build of mbedTLS;
   - installs of rar, tar.gz and zip packages, including a 36 MB, 579-file
     emulator, identical file by file to the reference install;
   - the XMB launch request.
 - On the PC: the test suite, with the eighteen entries of the default store,
   and the ARK updater's install steps.
+- On a PSP, with ARK 5.1.6: the XMB with the newer VSHControl and XMBControl,
+  starting the app from the XMB, the Wi-Fi connection, and the store over
+  HTTPS once the date came from the RTC.
 
 What still needs a real PSP:
 
-- The Wi-Fi connection itself, and HTTPS speed.
 - Starting the ARK Updater from the app.
-- The XMBControl changes and the newer VSHControl: the XMB can't be emulated.
+- The Plugins category in the XMB.
 
 ## License
 
