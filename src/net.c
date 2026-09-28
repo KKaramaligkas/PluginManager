@@ -5,6 +5,11 @@
     The PSP's own SSL library only speaks obsolete protocol versions, so all
     transfers go through libcurl + mbedTLS (TLS 1.2). The CA bundle is parsed
     once and handed to every connection through CURLOPT_SSL_CTX_FUNCTION.
+
+    The system network libraries are loaded into user memory next to the app
+    (main.c keeps room for them). Every setup step is checked and the first
+    failure is kept for net_last_error(), so a failed connection tells the
+    user why instead of just leaving the app "Offline".
 */
 
 #include <stdio.h>
@@ -29,45 +34,109 @@
 #include "util.h"
 #include "version.h"
 
+/* sceUtilityLoadModule() error for a module that is already loaded */
+#define UTILITY_MODULE_ALREADY_LOADED   0x80111102
+/* kernel errors for a memory allocation that failed */
+#define KERNEL_NO_MEMORY                0x80020190
+#define KERNEL_MEMBLOCK_ALLOC_FAILED    0x800200D9
+
+/* memory pool of the TCP/IP stack (socket buffers) */
+#define NET_POOL_SIZE   (256 * 1024)
+
+/* setup steps done so far: a failed setup resumes where it stopped, and
+   net_term() undoes exactly these */
+enum {
+    STEP_MODULE_COMMON  = 1 << 0,
+    STEP_MODULE_INET    = 1 << 1,
+    STEP_NET            = 1 << 2,
+    STEP_INET           = 1 << 3,
+    STEP_RESOLVER       = 1 << 4,
+    STEP_APCTL          = 1 << 5,
+};
+
+static int steps;
 static int inited;
+static char last_error[200];
 static char ca_path[PM_PATH_MAX];
 static int tls_verify = 1;
 static mbedtls_x509_crt ca_chain;
 static int ca_state;            /* 0 not loaded, 1 loaded, -1 failed */
 static SceUID ca_lock = -1;
 
+static int fail(const char *what, int code)
+{
+    if (code == (int)KERNEL_NO_MEMORY || code == (int)KERNEL_MEMBLOCK_ALLOC_FAILED)
+        snprintf(last_error, sizeof(last_error), "%s: not enough free memory (error %08X).", what, (unsigned)code);
+    else
+        snprintf(last_error, sizeof(last_error), "%s (error %08X).", what, (unsigned)code);
+    return code < 0 ? code : -1;
+}
+
+const char *net_last_error(void)
+{
+    return last_error[0] ? last_error : "Unknown network error.";
+}
+
+static int load_module(int module)
+{
+    int r = sceUtilityLoadModule(module);
+    return r == (int)UTILITY_MODULE_ALREADY_LOADED ? 0 : r;
+}
+
 int net_init(void)
 {
+    int r;
     if (inited) return 0;
-    sceUtilityLoadNetModule(PSP_NET_MODULE_COMMON);
-    sceUtilityLoadNetModule(PSP_NET_MODULE_INET);
 
-    int r = sceNetInit(128 * 1024, 42, 4 * 1024, 42, 4 * 1024);
-    if (r < 0) return r;
-    sceNetInetInit();
-    sceNetApctlInit(0x8000, 48);
-    sceNetResolverInit();
+    if (!(steps & STEP_MODULE_COMMON)) {
+        if ((r = load_module(PSP_MODULE_NET_COMMON)) < 0) return fail("Couldn't load the system network library", r);
+        steps |= STEP_MODULE_COMMON;
+    }
+    if (!(steps & STEP_MODULE_INET)) {
+        if ((r = load_module(PSP_MODULE_NET_INET)) < 0) return fail("Couldn't load the system Internet library", r);
+        steps |= STEP_MODULE_INET;
+    }
+    if (!(steps & STEP_NET)) {
+        if ((r = sceNetInit(NET_POOL_SIZE, 42, 4 * 1024, 42, 4 * 1024)) < 0) return fail("Couldn't start the network", r);
+        steps |= STEP_NET;
+    }
+    if (!(steps & STEP_INET)) {
+        if ((r = sceNetInetInit()) < 0) return fail("Couldn't start the Internet protocols", r);
+        steps |= STEP_INET;
+    }
+    if (!(steps & STEP_RESOLVER)) {
+        if ((r = sceNetResolverInit()) < 0) return fail("Couldn't start the name resolver", r);
+        steps |= STEP_RESOLVER;
+    }
+    if (!(steps & STEP_APCTL)) {
+        if ((r = sceNetApctlInit(0x8000, 48)) < 0) return fail("Couldn't start the Wi-Fi connection manager", r);
+        steps |= STEP_APCTL;
+    }
 
+    if (ca_lock < 0) ca_lock = sceKernelCreateSema("pm_ca", 0, 1, 1, NULL);
     curl_global_init(CURL_GLOBAL_ALL);
-    ca_lock = sceKernelCreateSema("pm_ca", 0, 1, 1, NULL);
     inited = 1;
     return 0;
 }
 
 void net_term(void)
 {
-    if (!inited) return;
-    curl_global_cleanup();
-    if (ca_state == 1) mbedtls_x509_crt_free(&ca_chain);
-    ca_state = 0;
-    sceNetApctlDisconnect();
-    sceNetResolverTerm();
-    sceNetApctlTerm();
-    sceNetInetTerm();
-    sceNetTerm();
-    sceUtilityUnloadNetModule(PSP_NET_MODULE_INET);
-    sceUtilityUnloadNetModule(PSP_NET_MODULE_COMMON);
-    inited = 0;
+    if (inited) {
+        curl_global_cleanup();
+        if (ca_state == 1) mbedtls_x509_crt_free(&ca_chain);
+        ca_state = 0;
+        inited = 0;
+    }
+    if (steps & STEP_APCTL) {
+        sceNetApctlDisconnect();
+        sceNetApctlTerm();
+    }
+    if (steps & STEP_RESOLVER) sceNetResolverTerm();
+    if (steps & STEP_INET) sceNetInetTerm();
+    if (steps & STEP_NET) sceNetTerm();
+    if (steps & STEP_MODULE_INET) sceUtilityUnloadModule(PSP_MODULE_NET_INET);
+    if (steps & STEP_MODULE_COMMON) sceUtilityUnloadModule(PSP_MODULE_NET_COMMON);
+    steps = 0;
 }
 
 int net_wlan_switch_on(void)
@@ -75,18 +144,31 @@ int net_wlan_switch_on(void)
     return sceWlanGetSwitchState() != 0;
 }
 
+static int apctl_state(void)
+{
+    int state = PSP_NET_APCTL_STATE_DISCONNECTED;
+    if (!inited || sceNetApctlGetState(&state) < 0) return PSP_NET_APCTL_STATE_DISCONNECTED;
+    return state;
+}
+
 int net_is_connected(void)
 {
-    int state = 0;
-    if (!inited) return 0;
-    if (sceNetApctlGetState(&state) < 0) return 0;
-    return state == PSP_NET_APCTL_STATE_GOT_IP;
+    return apctl_state() == PSP_NET_APCTL_STATE_GOT_IP;
+}
+
+static void draw_frame(void (*draw)(void *ud), void *ud)
+{
+    gfx_begin();
+    if (draw) draw(ud);
+    gfx_end();
+    gfx_swap();
 }
 
 int net_connect_dialog(void (*draw)(void *ud), void *ud)
 {
-    if (net_init() < 0) return -1;
-    if (net_is_connected()) return 0;
+    int r = net_init();
+    if (r < 0) return r;
+    if (net_is_connected()) return NET_CONNECTED;
 
     pspUtilityNetconfData data;
     struct pspUtilityNetconfAdhoc adhoc;
@@ -103,7 +185,7 @@ int net_connect_dialog(void (*draw)(void *ud), void *ud)
     data.adhocparam = &adhoc;
     data.hotspot = 1;
 
-    if (sceUtilityNetconfInitStart(&data) < 0) return -1;
+    if ((r = sceUtilityNetconfInitStart(&data)) < 0) return fail("Couldn't open the network connection dialog", r);
 
     for (int done = 0; !done;) {
         gfx_begin();
@@ -124,7 +206,24 @@ int net_connect_dialog(void (*draw)(void *ud), void *ud)
         }
         gfx_swap();
     }
-    return net_is_connected() ? 0 : -1;
+
+    /* the dialog closes once the PSP has its address; give a connection that
+       is still being set up a few more seconds */
+    int state = apctl_state();
+    for (int i = 0; i < 5 * 60 && data.base.result == 0 && state != PSP_NET_APCTL_STATE_GOT_IP &&
+                    state != PSP_NET_APCTL_STATE_DISCONNECTED; i++) {
+        draw_frame(draw, ud);
+        state = apctl_state();
+    }
+    if (state == PSP_NET_APCTL_STATE_GOT_IP) return NET_CONNECTED;
+
+    if (data.base.result < 0) return fail("The network connection dialog failed", data.base.result);
+    if (data.base.result == 0 && state != PSP_NET_APCTL_STATE_DISCONNECTED) {
+        snprintf(last_error, sizeof(last_error), "The connection didn't finish (state %d). Try again.", state);
+        return -1;
+    }
+    /* cancelled, or the dialog already showed why it couldn't connect */
+    return NET_CANCELLED;
 }
 
 void net_set_tls(const char *ca_file, int verify)
@@ -209,7 +308,7 @@ static int xferinfo_cb(void *p, curl_off_t dltotal, curl_off_t dlnow, curl_off_t
 static int perform(const char *url, xfer *x, char *err, int errlen)
 {
     if (!inited && net_init() < 0) {
-        snprintf(err, errlen, "Network initialization failed");
+        snprintf(err, errlen, "%s", net_last_error());
         return -1;
     }
     if (!net_is_connected()) {

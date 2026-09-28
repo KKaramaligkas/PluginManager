@@ -33,7 +33,13 @@
 
 PSP_MODULE_INFO("PluginManager", PSP_MODULE_USER, 1, 0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER | PSP_THREAD_ATTR_VFPU);
-PSP_HEAP_SIZE_KB(-1024);
+/* The heap gets all the free memory but this much, which the system needs
+   while the app runs: the network libraries (~450 KB), the TCP/IP buffers,
+   their threads and the worker thread's stack are all allocated next to the
+   app. Don't use a negative PSP_HEAP_SIZE_KB: it leaves only 512 KB, so the
+   network can't start on a real PSP (emulators don't load those libraries,
+   so they don't show the problem). */
+PSP_HEAP_THRESHOLD_SIZE_KB(4 * 1024);
 
 /* ------------------------------------------------------------------------ */
 /* layout */
@@ -427,7 +433,8 @@ static void draw_header(void)
         }
     }
     int online = net_is_connected();
-    x -= text_draw(x, 7, online ? "Online" : "Offline", 0.55f, online ? C_OK : C_FAINT, TEXT_RIGHT);
+    const char *status = online ? "Online" : net_wlan_switch_on() ? "Offline" : "Wi-Fi off";
+    x -= text_draw(x, 7, status, 0.55f, online ? C_OK : C_FAINT, TEXT_RIGHT);
     gfx_circle(x - 7, 13, 3, online ? C_OK : C_FAINT, 1);
 
     if (job.running && job.type == JOB_ICONS) ui_spinner(x - 22, 13, 4, C_DIM);
@@ -1010,6 +1017,16 @@ static int osk_input(const char *title, const char *initial, char *out, int outl
 /* ------------------------------------------------------------------------ */
 /* jobs */
 
+/* shows the system connection dialog; errors are reported, a cancelled
+   dialog isn't (the dialog itself shows why a connection failed) */
+static int connect_wifi(void)
+{
+    int r = net_connect_dialog(draw_scene, NULL);
+    input_flush();
+    if (r < 0) message("Can't connect", net_last_error());
+    return r == NET_CONNECTED;
+}
+
 static int ensure_online(void)
 {
     if (net_is_connected()) return 1;
@@ -1017,14 +1034,7 @@ static int ensure_online(void)
         message("Wireless is off", "Turn on the WLAN switch of your PSP and try again.");
         return 0;
     }
-    int r = net_connect_dialog(draw_scene, NULL);
-    input_flush();
-    if (r < 0) {
-        message("Not connected", "Couldn't connect to a network. Set up a connection in "
-                "Settings > Network Settings of the XMB and try again.");
-        return 0;
-    }
-    return 1;
+    return connect_wifi();
 }
 
 /* waits for the background icon download to stop */
@@ -1548,10 +1558,8 @@ int main(int argc, char *argv[])
     /* first frames before a possible Wi-Fi dialog */
     for (int i = 0; i < 10; i++) render();
 
-    if (app.cfg.auto_refresh && !from_xmb && net_wlan_switch_on()) {
-        if (net_connect_dialog(draw_scene, NULL) == 0) start_job(JOB_REFRESH, NULL, NULL);
-        input_flush();
-    }
+    if (app.cfg.auto_refresh && !from_xmb && net_wlan_switch_on() && connect_wifi())
+        start_job(JOB_REFRESH, NULL, NULL);
 
     input_state in;
     while (!exit_requested) {

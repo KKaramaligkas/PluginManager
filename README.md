@@ -53,6 +53,19 @@ Settings:
   clock can't be set, because it makes downloads open to tampering.
 - **Refresh the store at startup** and **Clear downloaded icons**.
 
+### If it can't connect
+
+The top bar shows **Online**, **Offline** or **Wi-Fi off** (the WLAN switch).
+The app connects through the PSP's own connection dialog, with the
+connections set up in *Settings → Network Settings*. If the network can't
+start, a message names the step that failed and gives the system error code.
+Error `80020190` means the PSP ran out of memory.
+
+Versions 1.0.0 and 1.0.1 left almost no memory for the PSP's network
+libraries, so on a real PSP they stayed *Offline*. Emulators don't load those
+libraries, which is why testing missed it. The store can't update a copy that
+can't connect: extract `PluginManager.zip` from the latest release by hand.
+
 ## The Plugins category
 
 The XMB's columns are a fixed list of eight built into the firmware's
@@ -273,6 +286,10 @@ and on the PSP the socket functions would call the wrong system functions.
     `https://localhost:8443/`) and put its certificate authority in the
     emulated `cacert.pem`.
   - mbedTLS 2.28 can't match IP addresses in certificates, so use a host name.
+  - PPSSPP doesn't need the memory of the network libraries, but it reserves
+    it and warns `No room for utility module` in its log when the app doesn't
+    leave enough. The app keeps 4 MB free for them
+    (`PSP_HEAP_THRESHOLD_SIZE_KB` in `src/main.c`).
 
 What has been checked:
 
@@ -286,7 +303,7 @@ What has been checked:
 
 What still needs a real PSP:
 
-- Wi-Fi and HTTPS speed.
+- The Wi-Fi connection itself, and HTTPS speed.
 - The XMBControl changes: the XMB can't be emulated.
 
 ## License
