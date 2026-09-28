@@ -286,7 +286,15 @@ void app_rebuild_items(void)
         it->status = ST_AVAILABLE;
 
         const db_package *p = db_find(&app.db, e->id);
-        if (p) {
+        if (e->version_file) {
+            /* installed by other means (ARK itself): the file tells the version */
+            install_ctx ctx;
+            app_fill_install_ctx(&ctx);
+            if (installer_read_version_file(&ctx, e->version_file, it->installed_version,
+                                            sizeof(it->installed_version)) == 0)
+                it->status = ST_INSTALLED;
+        }
+        else if (p) {
             fill_package_state(it, p);
             it->status = ST_INSTALLED;
         }

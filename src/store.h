@@ -37,6 +37,8 @@ typedef struct {
     const char *updated;
     const char *runlevel;       /* informational, for plugins */
     const char *notes;          /* shown before installing */
+    const char *version_file;   /* installed version is read from this file (ARK itself), or NULL */
+    int runs;                   /* has a "run" step: installing ends by starting a program */
     store_category category;
     int64_t size;
     const cJSON *install;       /* array of steps */

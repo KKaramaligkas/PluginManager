@@ -17,7 +17,7 @@ LIBDIR =
 # separate chunks, and psp-fixup-imports then builds import tables that bind
 # the wrong functions (tools/check_imports.py verifies this after linking).
 LIBS = -lintrafont -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lcjson -lunarr -llzma -lbz2 -lpng -lz \
-       -lpspgu -lpspgum -lpsppower -lpspwlan -lpspnet -lpspnet_apctl -lpspkubridge -lm
+       -lpspgu -lpspgum -lpsppower -lpspwlan -lpspnet -lpspnet_apctl -lpspkubridge -lpspsystemctrl_user -lm
 
 EXTRA_TARGETS = check-imports EBOOT.PBP
 PSP_EBOOT_TITLE = Plugin Manager

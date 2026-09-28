@@ -89,8 +89,9 @@ static const char *resolve_icon(store_t *st, const char *icon, const char *sourc
 
 static int validate_steps(const cJSON *install, char *why, int whylen)
 {
+    /* Plugin Manager 1.0.2 and older skip entries with a "run" step */
     static const char *types[] = {
-        "download", "extract", "copy", "mkdir", "delete", "plugin", "message",
+        "download", "extract", "copy", "mkdir", "delete", "plugin", "message", "run",
     };
 
     if (!cJSON_IsArray(install) || cJSON_GetArraySize(install) == 0) {
@@ -184,6 +185,12 @@ int store_parse(store_t *st, const char *json, const char *source_url, char *err
         se->updated = get_str(e, "updated");
         se->runlevel = get_str(e, "runlevel");
         se->notes = get_str(e, "notes");
+        se->version_file = get_str(e, "versionFile");
+        const cJSON *step;
+        cJSON_ArrayForEach(step, se->install) {
+            const char *type = get_str(step, "type");
+            if (type && !strcmp(type, "run")) se->runs = 1;
+        }
         se->category = store_category_from_name(get_str(e, "category"));
         se->icon = resolve_icon(st, get_str(e, "icon"), source_url);
 

@@ -144,10 +144,12 @@ static void test_store(void)
         " {\"id\":\"nosteps\",\"title\":\"No steps\",\"install\":[]},"
         " {\"id\":\"badstep\",\"title\":\"Bad step\",\"install\":[{\"type\":\"format_flash0\"}]},"
         " {\"id\":\"abs\",\"title\":\"Abs\",\"category\":\"emulators\",\"icon\":\"https://x.org/a.png\","
-        "  \"install\":[{\"type\":\"message\"}]}"
+        "  \"install\":[{\"type\":\"message\"}]},"
+        " {\"id\":\"sys\",\"title\":\"System\",\"versionFile\":\"%ARK%VERSION.TXT\","
+        "  \"install\":[{\"type\":\"message\"},{\"type\":\"run\",\"path\":\"%GAME%UPDATE/EBOOT.PBP\"}]}"
         "]}";
     CHECK_INT(store_parse(&st, json, "https://example.org/store/store.json?raw=1", err, sizeof(err)), 0);
-    CHECK_INT(st.count, 2);
+    CHECK_INT(st.count, 3);
     CHECK_INT(st.revision, 3);
     CHECK_STR(st.entries[0].id, "ok");
     CHECK_STR(st.entries[0].title, "Good");
@@ -158,6 +160,10 @@ static void test_store(void)
     CHECK_STR(st.entries[1].icon, "https://x.org/a.png");
     CHECK_INT(st.entries[1].category, CAT_EMULATOR);
     CHECK(store_find(&st, "abs") == &st.entries[1]);
+    CHECK(st.entries[0].version_file == NULL);
+    CHECK_INT(st.entries[0].runs, 0);
+    CHECK_STR(st.entries[2].version_file, "%ARK%VERSION.TXT");
+    CHECK_INT(st.entries[2].runs, 1);
     CHECK(store_find(&st, "nosteps") == NULL);
     store_free(&st);
 
@@ -174,7 +180,7 @@ static void test_store(void)
             CHECK((long)fread(buf, 1, n, f) == n);
             fclose(f);
             CHECK_INT(store_parse(&st, buf, NULL, err, sizeof(err)), 0);
-            CHECK_INT(st.count, 12);
+            CHECK_INT(st.count, 18);
             for (int i = 0; i < st.count; i++) {
                 CHECK(st.entries[i].icon != NULL);
                 CHECK(st.entries[i].icon && pm_starts_with(st.entries[i].icon,
@@ -223,6 +229,18 @@ static void test_paths(void)
     CHECK_INT(installer_resolve_path(&ctx, "ms0:/PSP/GAME150X/a", out, sizeof(out), 1), -1);
     CHECK_INT(installer_resolve_path(&ctx, "SEPLUGINS/a.prx", out, sizeof(out), 1), -1);
 
+    /* already expanded paths (archives, database): '%' is just a character */
+    CHECK_INT(installer_check_path(&ctx, "ms0:/PSP/GAME/nzp/models/zbc%.mdl", out, sizeof(out)), 0);
+    CHECK_STR(out, "ms0:/PSP/GAME/nzp/models/zbc%.mdl");
+    CHECK_INT(installer_resolve_path(&ctx, "ms0:/PSP/GAME/nzp/models/zbc%.mdl", out, sizeof(out), 1), -1);
+    CHECK_INT(installer_check_path(&ctx, "ef0:/SEPLUGINS/%ARK%x.prx", out, sizeof(out)), 0);
+    CHECK_STR(out, "ef0:/SEPLUGINS/%ARK%x.prx");
+    CHECK_INT(installer_check_path(&ctx, "ms0:/PSP/SAVEDATA/ARK_01234/FLASH0.ARK", out, sizeof(out)), -1);
+    CHECK_INT(installer_check_path(&ctx, "ms0:/SEPLUGINS/../PSP/SAVEDATA/x", out, sizeof(out)), -1);
+    CHECK_INT(installer_check_path(&ctx, "ms0:/PSP/APPS/PluginManager/data/installed.json", out, sizeof(out)), -1);
+    CHECK_INT(installer_check_path(&ctx, "flash0:/kd/x.prx", out, sizeof(out)), -1);
+    CHECK_INT(installer_check_path(&ctx, "%GAME%x", out, sizeof(out)), -1);
+
     /* conditions */
     cJSON *step = cJSON_Parse("{\"if\":{\"model\":\"1000\"}}");
     CHECK(!installer_condition_ok(&ctx, step));
@@ -243,6 +261,81 @@ static void test_paths(void)
     step = cJSON_Parse("{}");
     CHECK(installer_condition_ok(&ctx, step));
     cJSON_Delete(step);
+}
+
+static void put_text(const char *path, const char *text)
+{
+    fs_write_all(path, text, (int)strlen(text));
+}
+
+static int run_only(install_ctx *ctx, db_t *db, const char *path, char *err)
+{
+    char json[512];
+    snprintf(json, sizeof(json),
+             "{\"entries\":[{\"id\":\"r\",\"title\":\"R\",\"install\":[{\"type\":\"run\",\"path\":\"%s\"}]}]}", path);
+    store_t st;
+    int r = store_parse(&st, json, NULL, err, 256);
+    if (r == 0) r = installer_install(ctx, &st.entries[0], db, err, 256);
+    store_free(&st);
+    return r;
+}
+
+static void test_run_and_version(void)
+{
+    install_ctx ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    strcpy(ctx.root, "ms0:/");
+    strcpy(ctx.ark_path, "ms0:/PSP/SAVEDATA/ARK_01234/");
+    strcpy(ctx.temp_dir, "ms0:/PSP/APPS/PluginManager/data/tmp/");
+    strcpy(ctx.protect_dir, "ms0:/PSP/APPS/PluginManager/data/");
+    ctx.model = MODEL_3000;
+    db_t db;
+    memset(&db, 0, sizeof(db));
+    char err[256];
+
+    /* "run" only records the program; the app offers to start it */
+    fs_mkdirs("ms0:/PSP/GAME/UPDATE/", NULL, NULL);
+    fs_write_all("ms0:/PSP/GAME/UPDATE/EBOOT.PBP", "PBP", 3);
+    CHECK_INT(run_only(&ctx, &db, "%GAME%UPDATE/EBOOT.PBP", err), 0);
+    CHECK_STR(ctx.run_path, "ms0:/PSP/GAME/UPDATE/EBOOT.PBP");
+    fs_mkdirs("ms0:/PSP/APPS/Tool/", NULL, NULL);
+    fs_write_all("ms0:/PSP/APPS/Tool/EBOOT.PBP", "PBP", 3);
+    CHECK_INT(run_only(&ctx, &db, "%APPS%Tool/EBOOT.PBP", err), 0);
+    CHECK_STR(ctx.run_path, "ms0:/PSP/APPS/Tool/EBOOT.PBP");
+
+    /* refused: not an EBOOT.PBP, outside PSP/GAME and PSP/APPS, missing */
+    fs_mkdirs("ms0:/SEPLUGINS/x/", NULL, NULL);
+    fs_write_all("ms0:/SEPLUGINS/x/EBOOT.PBP", "PBP", 3);
+    CHECK_INT(run_only(&ctx, &db, "%SEPLUGINS%x/EBOOT.PBP", err), -1);
+    CHECK_STR(ctx.run_path, "");
+    fs_write_all("ms0:/PSP/GAME/UPDATE/PARAM.SFO", "SFO", 3);
+    CHECK_INT(run_only(&ctx, &db, "%GAME%UPDATE/PARAM.SFO", err), -1);
+    CHECK_INT(run_only(&ctx, &db, "%GAME%NOPE/EBOOT.PBP", err), -1);
+    CHECK(strstr(err, "missing") != NULL);
+    CHECK_INT(run_only(&ctx, &db, "flash0:/vsh/module/EBOOT.PBP", err), -1);
+    CHECK_INT(run_only(&ctx, &db, "%ARK%EBOOT.PBP", err), -1);
+    CHECK_STR(ctx.run_path, "");
+    db_free(&db);
+
+    /* version files: the first line, if it looks like a version */
+    char v[32];
+    fs_mkdirs("ms0:/PSP/SAVEDATA/ARK_01234/", NULL, NULL);
+    put_text("ms0:/PSP/SAVEDATA/ARK_01234/VERSION.TXT", "5.1.6\r\n");
+    CHECK_INT(installer_read_version_file(&ctx, "%ARK%VERSION.TXT", v, sizeof(v)), 0);
+    CHECK_STR(v, "5.1.6");
+    put_text("ms0:/PSP/SAVEDATA/ARK_01234/VERSION.TXT", " 2026-09-12\nsecond line\n");
+    CHECK_INT(installer_read_version_file(&ctx, "%ARK%VERSION.TXT", v, sizeof(v)), 0);
+    CHECK_STR(v, "2026-09-12");
+    put_text("ms0:/PSP/SAVEDATA/ARK_01234/VERSION.TXT", "not a version");
+    CHECK_INT(installer_read_version_file(&ctx, "%ARK%VERSION.TXT", v, sizeof(v)), -1);
+    CHECK_STR(v, "");
+    put_text("ms0:/PSP/SAVEDATA/ARK_01234/VERSION.TXT", "");
+    CHECK_INT(installer_read_version_file(&ctx, "%ARK%VERSION.TXT", v, sizeof(v)), -1);
+    put_text("ms0:/PSP/SAVEDATA/ARK_01234/VERSION.TXT", "1.2.3.4.5.6.7.8.9.10.11.12.13.14.15");
+    CHECK_INT(installer_read_version_file(&ctx, "%ARK%VERSION.TXT", v, sizeof(v)), -1);
+    CHECK_INT(installer_read_version_file(&ctx, "%ARK%MISSING.TXT", v, sizeof(v)), -1);
+    CHECK_INT(installer_read_version_file(&ctx, "flash0:/vsh/etc/version.txt", v, sizeof(v)), -1);
+    CHECK_INT(installer_read_version_file(&ctx, "%NOPE%x", v, sizeof(v)), -1);
 }
 
 static void test_db(void)
@@ -300,6 +393,7 @@ int main(void)
     test_pluginstxt();
     test_store();
     test_paths();
+    test_run_and_version();
     test_db();
     printf("test_core: %d checks, %d failures\n", test_checks, test_failures);
     return test_failures ? 1 : 0;

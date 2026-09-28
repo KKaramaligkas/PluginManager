@@ -26,6 +26,21 @@ FasterARK and is listed in three places:
   the updater). The app itself runs on any ARK.
 - Later versions arrive through the store: Plugin Manager has its own entry.
 
+## Updating ARK
+
+ARK itself is in the store as **ARK-5**, from ARK 5.1.6. The app compares the
+store's version with `VERSION.TXT` in ARK's folder, which the release packages
+and the updater write. **Update** downloads `ARK_UPDATE.zip` from the latest
+release, puts the ARK Updater in `PSP/GAME/UPDATE` and offers to start it. The
+updater updates ARK and this app, then restarts. It can also be started later
+from the Game column, like any other homebrew.
+
+The XMB's **System Update** and the Custom Launcher's update check are turned
+off in FasterARK (`UPDATER.TXT` points to `127.0.0.1`). They downloaded the
+original ARK-5 from its server, which would have replaced this build and its
+Plugin Manager entries. They can only fetch over plain http, which GitHub
+doesn't serve.
+
 ## Using it
 
 | Button | Grid | Plugin page |
@@ -162,6 +177,7 @@ you publish a change.
 | `notes` | shown on the page too, as a warning |
 | `icon` | 144×80 PNG, a file name relative to `iconBase` or a full URL |
 | `size`, `updated` (YYYY-MM-DD), `runlevel` | shown on the entry's page |
+| `versionFile` | for software installed by other means (ARK itself): the installed version is the first line of this file, such as `%ARK%VERSION.TXT`. Such an entry can't be uninstalled |
 
 Entries with errors are skipped, and the rest of the store still loads.
 
@@ -179,6 +195,7 @@ a failure leaves the previous version in place.
 | `delete` | `path` of a file |
 | `plugin` | `path` of a `.prx`; `runlevel`: a string or a list, such as `vsh`, `game`, `pops`, `umd`, `psp`, `homebrew`, `launcher`, `always` or game IDs (`"ULUS10041 ULES00151"`); `enabled` (default `true`); `position`: `"first"` puts the line at the top of `PLUGINS.TXT` |
 | `message` | `text` shown after installing |
+| `run` | `path` of an `EBOOT.PBP` in `PSP/GAME` or `PSP/APPS`, which the app offers to start once the install is done (the app closes); `title`: its name in that question. Plugin Manager 1.0.2 and older skip entries with this step, and **Update all** leaves them out |
 
 Archives can be zip, rar, 7z, tar or tar.gz. Patterns use `*` and `?`, ignore
 case, and match the file name, or the path inside `input` when they contain a
@@ -266,8 +283,11 @@ make -C PluginManager package    # dist/PSP/APPS/PluginManager and dist/PluginMa
 ```
 
 `make` at the root of the repository builds the release packages. It also
-builds XMBControl from [`XMBControl/`](../XMBControl) into the `FLASH0.ARK`
-of every variant (`tools/flash0.py`).
+builds XMBControl from [`XMBControl/`](../XMBControl) and VSHControl from
+[`VSHControl/`](../VSHControl) into the `FLASH0.ARK` of every variant
+(`tools/flash0.py`), and writes `VERSION.TXT` from `Updater/version.h`. The
+build stops if the store's `ark` entry has another version
+(`tools/check_store_version.py`).
 
 After linking, the build runs `tools/check_imports.py`, which fails the build
 when an import table comes out broken. The toolchain adds libraries such as
@@ -300,16 +320,21 @@ What has been checked:
 
 - In PPSSPP:
   - the whole app;
+  - updating ARK: the version check, the download of `ARK_UPDATE.zip` from a
+    local copy of the store, and the app closing to start the updater (PPSSPP
+    has no ARK, so the start itself is left to a real console);
   - the store and icons downloaded over TLS 1.2 with certificate checks;
   - installs of rar, tar.gz and zip packages, including a 36 MB, 579-file
     emulator, identical file by file to the reference install;
   - the XMB launch request.
-- On the PC: the test suite, with the twelve entries of the default store.
+- On the PC: the test suite, with the eighteen entries of the default store,
+  and the ARK updater's install steps.
 
 What still needs a real PSP:
 
 - The Wi-Fi connection itself, and HTTPS speed.
-- The XMBControl changes: the XMB can't be emulated.
+- Starting the ARK Updater from the app.
+- The XMBControl changes and the newer VSHControl: the XMB can't be emulated.
 
 ## License
 

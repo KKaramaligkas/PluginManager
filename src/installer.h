@@ -41,6 +41,10 @@ struct install_ctx {
 
     /* Messages collected from "message" steps, shown after installing. */
     char messages[512];
+    /* Program set by a "run" step, which the app offers to start after installing,
+       and its name (the step's "title"; empty: the entry's title). */
+    char run_path[256];
+    char run_title[64];
 };
 
 /* Installs (or updates) `e`. The package record is stored into `db`
@@ -57,7 +61,15 @@ void installer_plugins_txt(const char *root, char *out, int size);
    write to. Returns 0 on success. Exposed for the unit tests. */
 int installer_resolve_path(const install_ctx *ctx, const char *in, char *out, int size, int must_be_writable);
 
+/* Checks a path that is already expanded, as read from an archive or from the
+   database: a '%' is an ordinary character there. Returns 0 when it may be written. */
+int installer_check_path(const install_ctx *ctx, const char *path, char *out, int size);
+
 /* Returns 1 when a step's "if" condition matches this console. */
 int installer_condition_ok(const install_ctx *ctx, const void *cjson_step);
+
+/* Reads the version written in an entry's "versionFile" (its first line).
+   Returns 0 on success, -1 when the file is missing or not a version. */
+int installer_read_version_file(const install_ctx *ctx, const char *spec, char *out, int size);
 
 #endif

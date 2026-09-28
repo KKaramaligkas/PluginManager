@@ -6,14 +6,32 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 4
+    "revision": 5
   },
   "entries": [
+    {
+      "id": "ark",
+      "title": "ARK-5",
+      "author": "PSP-Arkfive",
+      "version": "5.1.6",
+      "category": "utility",
+      "license": "GPL-3.0",
+      "website": "https://github.com/kkaramaligkas/fasterark_powerup",
+      "icon": "ark.png",
+      "versionFile": "%ARK%VERSION.TXT",
+      "description": "The custom firmware itself, as released by FasterARK powerup. Updating downloads the ARK updater from the latest release and starts it: it updates ARK and the Plugin Manager, keeps your settings and plugins, and restarts the console.",
+      "notes": "Keep the battery charged, or the charger plugged in, while the updater runs.",
+      "install": [
+        { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/latest/download/ARK_UPDATE.zip", "file": "ARK_UPDATE.zip" },
+        { "type": "extract", "file": "ARK_UPDATE.zip", "input": "PSP/GAME/UPDATE/", "output": "%GAME%UPDATE/" },
+        { "type": "run", "path": "%GAME%UPDATE/EBOOT.PBP", "title": "ARK Updater" }
+      ]
+    },
     {
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -239,6 +257,95 @@
       "install": [
         { "type": "download", "url": "https://github.com/pspdev/psplinkusb/releases/download/v3.2.1/psplink.zip", "file": "psplink.zip", "sha256": "721be3c1dd4f82f9ac9b76183651af993de23cd8dfdcd0b85ece109697a92bec" },
         { "type": "extract", "file": "psplink.zip", "input": "psplink/", "output": "%GAME%psplink/", "keep": "psplink.ini" }
+      ]
+    },
+    {
+      "id": "picodrive",
+      "title": "PicoDrive",
+      "author": "notaz and irixxxx",
+      "version": "2.05",
+      "category": "emulator",
+      "license": "Non-commercial",
+      "website": "https://github.com/irixxxx/picodrive",
+      "icon": "picodrive.png",
+      "size": 1075570,
+      "updated": "2025-05-31",
+      "description": "SEGA emulator: Mega Drive/Genesis, Mega CD, 32X, Master System, Game Gear, SG-1000 and Pico. Pick your ROMs, zipped or not, from anywhere on the memory stick with its file browser. Mega CD games also need the Mega CD BIOS, see readme.txt.",
+      "install": [
+        { "type": "download", "url": "https://github.com/irixxxx/picodrive/releases/download/v2.05/PicoDrive_psp_2.05-19d4108.zip", "file": "picodrive.zip", "sha256": "ceb1b1c7e5b9b2f73542d5de1ee6aef387160d8d782f07fd14e018cf9a361407" },
+        { "type": "extract", "file": "picodrive.zip", "input": "PicoDrive/", "output": "%GAME%PicoDrive/" }
+      ]
+    },
+    {
+      "id": "snes9xtyl",
+      "title": "Snes9xTYL mod",
+      "author": "yoyofr and esmjanus",
+      "version": "2018-04-04",
+      "category": "emulator",
+      "license": "Non-commercial",
+      "website": "https://github.com/PSP-Archive/snes9xTYL_mod",
+      "icon": "snes9xtyl.png",
+      "size": 1084200,
+      "updated": "2018-04-04",
+      "description": "The classic SNES emulator for the PSP, in its last updated version. On a PSP it plays sound on the Media Engine, which makes it faster; on a PS Vita the build that works there is installed instead. Pick your ROMs with its file browser.",
+      "install": [
+        { "type": "download", "if": { "platform": "psp" }, "url": "https://raw.githubusercontent.com/PSP-Archive/snes9xTYL_mod/6ce09a0ada7cc10b57ab8d7134385f44f29a9629/Release/s9xTYLme_mod.rar", "file": "snes9xtyl.rar", "sha256": "995d2c026fb5e7197ed8b8ebea68600d6f87a6462d04afab8347ec1c7a05c9a7" },
+        { "type": "download", "if": { "platform": "vita" }, "url": "https://raw.githubusercontent.com/PSP-Archive/snes9xTYL_mod/6ce09a0ada7cc10b57ab8d7134385f44f29a9629/Release/s9xTYLcm_mod.rar", "file": "snes9xtyl.rar", "sha256": "c909ef76312647b46dcab0fb11ac7225b78824ed81d31781dbd1aaa9575c6a56" },
+        { "type": "extract", "if": { "platform": "psp" }, "file": "snes9xtyl.rar", "input": "s9xTYLme_mod/", "output": "%GAME%Snes9xTYL/" },
+        { "type": "extract", "if": { "platform": "vita" }, "file": "snes9xtyl.rar", "input": "s9xTYLcm_mod/", "output": "%GAME%Snes9xTYL/" }
+      ]
+    },
+    {
+      "id": "nzportable",
+      "title": "Nazi Zombies: Portable",
+      "author": "NZ:P Team",
+      "version": "2.0.0-indev+20260924124055",
+      "category": "game",
+      "license": "GPL-2.0 (engine)",
+      "website": "https://github.com/nzp-team/nzportable",
+      "icon": "nzportable.png",
+      "size": 64412845,
+      "updated": "2026-09-24",
+      "description": "A zombie survival shooter in the style of Call of Duty's zombie mode, built on the Quake engine, with several maps. Runs on every PSP model. It always downloads the latest nightly build.",
+      "notes": "A 64 MB download: keep the charger plugged in.",
+      "install": [
+        { "type": "download", "url": "https://github.com/nzp-team/nzportable/releases/download/nightly/nzportable-psp.zip", "file": "nzportable.zip" },
+        { "type": "extract", "file": "nzportable.zip", "input": "nzportable/", "output": "%GAME%nzportable/", "keep": "nzp/config.cfg" }
+      ]
+    },
+    {
+      "id": "crosscraft",
+      "title": "CrossCraft Classic",
+      "author": "CrossCraft",
+      "version": "1.3",
+      "category": "game",
+      "license": "MPL-2.0",
+      "website": "https://github.com/CrossCraft/CrossCraft-Classic",
+      "icon": "crosscraft.png",
+      "size": 11863120,
+      "updated": "2022-12-01",
+      "description": "An open source reimplementation of Minecraft Classic 0.30: build with every block of the creative mode, save your worlds and play online on Classic servers. It has its own textures and code, nothing from Mojang.",
+      "install": [
+        { "type": "download", "url": "https://github.com/CrossCraft/CrossCraft-Classic/releases/download/v1.3/CrossCraft-PSP.zip", "file": "crosscraft.zip", "sha256": "be79e3fcbcd1c2fcdf81d13be052ddb7374735b5f750d4eeb2eaeb3f36aad3f9" },
+        { "type": "extract", "file": "crosscraft.zip", "output": "%GAME%CrossCraft/", "exclude": ["default.zip", "CrossCraft-Classic.prx"], "keep": "config.cfg" },
+        { "type": "extract", "file": "crosscraft.zip", "output": "%GAME%CrossCraft/texturepacks/", "include": "default.zip" }
+      ]
+    },
+    {
+      "id": "tuxracer",
+      "title": "Extreme Tux Racer",
+      "author": "chriopter (PSP port)",
+      "version": "0.6.0",
+      "category": "game",
+      "license": "GPL-2.0",
+      "website": "https://github.com/chriopter/psp-tuxracer",
+      "icon": "tuxracer.png",
+      "size": 44808271,
+      "updated": "2026-09-27",
+      "description": "Race Tux the penguin down snowy mountains and collect herring: a port of Extreme Tux Racer 0.8.4 with its courses and music. The port is new, from 2026, and its author tested it on a PSP at 333 MHz.",
+      "install": [
+        { "type": "download", "url": "https://github.com/chriopter/psp-tuxracer/releases/download/v0.6.0/extremetuxracer-psp.zip", "file": "tuxracer.zip", "sha256": "34b919d7452b6716898360d5cff29c92f33bb8208e6579576942fad4956eaa5e" },
+        { "type": "extract", "file": "tuxracer.zip", "input": "PSP/GAME/ExtremeTuxRacer/", "output": "%GAME%ExtremeTuxRacer/", "keep": "config/options.txt" }
       ]
     }
   ]

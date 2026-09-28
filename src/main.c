@@ -18,6 +18,8 @@
 #include <psprtc.h>
 #include <psputility.h>
 
+#include <systemctrl.h>
+
 #include "app.h"
 #include "entropy.h"
 #include "fs.h"
@@ -134,6 +136,8 @@ static struct {
 } ui;
 
 static volatile int exit_requested;
+/* set by a "run" step: started instead of returning to the XMB */
+static char launch_path[256];
 static unsigned int tex_loaded;
 
 /* ------------------------------------------------------------------------ */
@@ -612,11 +616,14 @@ static void build_details(void)
     if (!it) return;
 
     int self = !strcmp(it->id, "pluginmanager");
+    int external = it->entry && it->entry->version_file;   /* ARK itself */
+    /* reinstalling ARK runs the store's updater: never offer it over a newer ARK */
+    int newer = external && pm_version_compare(it->entry->version, it->installed_version) < 0;
     if (it->status == ST_AVAILABLE) ui.actions[ui.n_actions++] = ACT_INSTALL;
     if (it->status == ST_UPDATE) ui.actions[ui.n_actions++] = ACT_UPDATE;
-    if (it->status == ST_INSTALLED && it->entry) ui.actions[ui.n_actions++] = ACT_REINSTALL;
+    if (it->status == ST_INSTALLED && it->entry && !newer) ui.actions[ui.n_actions++] = ACT_REINSTALL;
     if (it->n_lines) ui.actions[ui.n_actions++] = it->enabled ? ACT_DISABLE : ACT_ENABLE;
-    if ((it->status == ST_INSTALLED || it->status == ST_UPDATE) && !self && db_find(&app.db, it->id))
+    if ((it->status == ST_INSTALLED || it->status == ST_UPDATE) && !self && !external && db_find(&app.db, it->id))
         ui.actions[ui.n_actions++] = ACT_UNINSTALL;
     if (it->status == ST_LOCAL) ui.actions[ui.n_actions++] = ACT_REMOVE_LOCAL;
     if (ui.action_sel >= ui.n_actions) ui.action_sel = 0;
@@ -1047,6 +1054,14 @@ static void wait_worker_idle(void)
 
 static void on_job_finished(void);
 
+static char pending_run[256];
+
+static void do_run(void)
+{
+    pm_strlcpy(launch_path, pending_run, sizeof(launch_path));
+    exit_requested = 1;
+}
+
 static int start_job(job_type type, const char *id, const char *title)
 {
     wait_worker_idle();
@@ -1106,6 +1121,11 @@ static void on_job_finished(void)
             refresh_items();
             if (ui.screen == SCR_DETAILS) build_details();
             snprintf(buf, sizeof(buf), "Store updated: %d items", app.store.count);
+            for (int i = 0; i < app.n_items; i++) {
+                const item_t *it = &app.items[i];
+                if (it->status == ST_UPDATE && it->entry && it->entry->version_file)
+                    snprintf(buf, sizeof(buf), "%s %s is available: see Updates", it->title, it->entry->version);
+            }
             toast(buf);
             start_icons();
         }
@@ -1144,7 +1164,15 @@ static void on_job_finished(void)
                 break;
             }
             ui.queue_total = 0;
-            if (install) {
+            if (install && job.run_path[0]) {
+                pm_strlcpy(pending_run, job.run_path, sizeof(pending_run));
+                const char *name = job.run_title[0] ? job.run_title : title;
+                snprintf(buf, sizeof(buf), "%s is ready. Start it now? The Plugin Manager closes.%s%s\n\n"
+                         "You can also start it later: it's %s in the Game column of the XMB.",
+                         name, job.messages[0] ? "\n\n" : "", job.messages, name);
+                confirm("Start", buf, do_run);
+            }
+            else if (install) {
                 snprintf(buf, sizeof(buf), "%s was installed.%s%s%s", title,
                          job.messages[0] ? "\n\n" : "", job.messages,
                          it && it->n_lines ? "\n\nPlugins are loaded when the XMB or a game starts. Exit the Plugin Manager to reload the XMB." : "");
@@ -1258,7 +1286,8 @@ static void about(void)
 static int count_updates(void)
 {
     int n = 0;
-    for (int i = 0; i < app.n_items; i++) n += app.items[i].status == ST_UPDATE && app.items[i].entry != NULL;
+    for (int i = 0; i < app.n_items; i++)
+        n += app.items[i].status == ST_UPDATE && app.items[i].entry && !app.items[i].entry->runs;
     return n;
 }
 
@@ -1267,7 +1296,9 @@ static void update_all(void)
     ui.queue_n = 0;
     for (int i = 0; i < app.n_items && ui.queue_n < (int)NELEMS(ui.queue); i++) {
         item_t *it = &app.items[i];
-        if (it->status == ST_UPDATE && it->entry) pm_strlcpy(ui.queue[ui.queue_n++], it->id, sizeof(ui.queue[0]));
+        /* entries that end by starting a program (ARK) are updated from their page */
+        if (it->status == ST_UPDATE && it->entry && !it->entry->runs)
+            pm_strlcpy(ui.queue[ui.queue_n++], it->id, sizeof(ui.queue[0]));
     }
     ui.queue_total = ui.queue_n;
     if (ui.queue_n && ensure_online()) run_queue();
@@ -1531,6 +1562,19 @@ static void handle_launch_request(void)
     open_details(it);
 }
 
+/* Starts an EBOOT.PBP the way the XMB starts homebrew. Doesn't return on success. */
+static void start_program(const char *path)
+{
+    struct SceKernelLoadExecVSHParam param;
+    memset(&param, 0, sizeof(param));
+    param.size = sizeof(param);
+    param.args = strlen(path) + 1;
+    param.argp = (void *)path;
+    param.key = "game";
+    /* 0x152: homebrew on the internal storage, 0x141: on the memory stick */
+    sctrlKernelLoadExecVSHWithApitype(pm_starts_with(path, "ef0:") ? 0x152 : 0x141, path, &param);
+}
+
 /* ------------------------------------------------------------------------ */
 
 int main(int argc, char *argv[])
@@ -1583,6 +1627,7 @@ int main(int argc, char *argv[])
     net_term();
     text_term();
     gfx_term();
+    if (launch_path[0]) start_program(launch_path);
     sceKernelExitGame();
     return 0;
 }

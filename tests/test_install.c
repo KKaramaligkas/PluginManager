@@ -224,6 +224,39 @@ int main(void)
     CHECK(fs_exists("ms0:/PSP/GAME/DaedalusX64/EBOOT.PBP"));
     CHECK(fs_is_dir("ms0:/PSP/GAME/DaedalusX64/Roms/"));
     CHECK(fs_exists("ms0:/PSP/GAME/psplink/EBOOT.PBP"));
+    if (db_find(&db, "picodrive")) {
+        CHECK(fs_exists("ms0:/PSP/GAME/PicoDrive/EBOOT.PBP"));
+        CHECK(fs_exists("ms0:/PSP/GAME/PicoDrive/skin/background.png"));
+        CHECK(!fs_exists("ms0:/PSP/GAME/bin_to_cso_mp3") && !fs_exists("ms0:/bin_to_cso_mp3"));
+    }
+    if (db_find(&db, "snes9xtyl")) {
+        CHECK(fs_exists("ms0:/PSP/GAME/Snes9xTYL/EBOOT.PBP"));
+        CHECK(fs_exists("ms0:/PSP/GAME/Snes9xTYL/mediaengine.prx"));   /* the PSP (Media Engine) build */
+        CHECK(fs_exists("ms0:/PSP/GAME/Snes9xTYL/DATA/snesadvance.dat"));
+    }
+    if (db_find(&db, "nzportable")) {
+        CHECK(fs_exists("ms0:/PSP/GAME/nzportable/EBOOT.PBP"));
+        CHECK(fs_exists("ms0:/PSP/GAME/nzportable/nzp/config.cfg"));
+    }
+    if (db_find(&db, "crosscraft")) {
+        CHECK(fs_exists("ms0:/PSP/GAME/CrossCraft/EBOOT.PBP"));
+        CHECK(fs_exists("ms0:/PSP/GAME/CrossCraft/texturepacks/default.zip"));
+        CHECK(!fs_exists("ms0:/PSP/GAME/CrossCraft/default.zip"));
+        CHECK(!fs_exists("ms0:/PSP/GAME/CrossCraft/CrossCraft-Classic.prx"));
+    }
+    if (db_find(&db, "tuxracer")) {
+        CHECK(fs_exists("ms0:/PSP/GAME/ExtremeTuxRacer/EBOOT.PBP"));
+        CHECK(fs_exists("ms0:/PSP/GAME/ExtremeTuxRacer/config/options.txt"));
+        CHECK(!fs_exists("ms0:/PSP/SYSTEM") && !fs_exists("ms0:/LICENSES"));
+    }
+
+    /* ---- ARK itself: the updater goes to PSP/GAME/UPDATE, and the app offers to start it ---- */
+    if (install(&ctx, &st, &db, "ark", err) == 0) {
+        CHECK_STR(ctx.run_path, "ms0:/PSP/GAME/UPDATE/EBOOT.PBP");
+        CHECK_STR(ctx.run_title, "ARK Updater");
+        CHECK(fs_exists("ms0:/PSP/GAME/UPDATE/EBOOT.PBP"));
+    }
+    CHECK(store_find(&st, "ark") && store_find(&st, "ark")->runs);
     CHECK(fs_dir_empty("ms0:/PSP/APPS/PluginManager/data/tmp/"));
 
     /* ---- the XMB index lists every package with plugins once ---- */
@@ -250,6 +283,14 @@ int main(void)
         CHECK(strstr(txt, "vsh, ms0:/SEPLUGINS/xmbih.prx, off\n") != NULL);
         free(txt);
         CHECK(db_list_has(db_find(&db, "xmbih")->files, db_find(&db, "xmbih")->n_files, "ms0:/SEPLUGINS/xmbih.ini"));
+    }
+
+    if (db_find(&db, "crosscraft")) {
+        fs_write_all("ms0:/PSP/GAME/CrossCraft/config.cfg", "username:Me\n", 12);
+        CHECK_INT(install(&ctx, &st, &db, "crosscraft", err), 0);
+        char *cfg = fs_read_all("ms0:/PSP/GAME/CrossCraft/config.cfg", NULL, 0);
+        CHECK_STR(cfg, "username:Me\n");
+        free(cfg);
     }
 
     /* ---- a checksum mismatch aborts and leaves the old install intact ---- */
@@ -329,6 +370,14 @@ int main(void)
         CHECK(strstr(txt, "cheatdevice_remastered.prx, on\n") == NULL);
         free(txt);
         CHECK_INT(installer_uninstall(&ctx, &db, "cheatdevice", err, sizeof(err)), 0);
+    }
+
+    init_ctx(&ctx, "ms0:/", MODEL_VITA);
+    if (install(&ctx, &st, &db, "snes9xtyl", err) == 0) {
+        CHECK(fs_exists("ms0:/PSP/GAME/Snes9xTYL/EBOOT.PBP"));
+        CHECK(!fs_exists("ms0:/PSP/GAME/Snes9xTYL/mediaengine.prx"));
+        CHECK_INT(installer_uninstall(&ctx, &db, "snes9xtyl", err, sizeof(err)), 0);
+        CHECK(!fs_exists("ms0:/PSP/GAME/Snes9xTYL"));
     }
 
     init_ctx(&ctx, "ef0:/", MODEL_GO);

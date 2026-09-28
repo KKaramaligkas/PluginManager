@@ -155,6 +155,8 @@ static void do_install(void)
 
     job.result = installer_install(&ctx, e, &app.db, job.error, sizeof(job.error));
     pm_strlcpy(job.messages, ctx.messages, sizeof(job.messages));
+    pm_strlcpy(job.run_path, ctx.run_path, sizeof(job.run_path));
+    pm_strlcpy(job.run_title, ctx.run_title, sizeof(job.run_title));
     app_db_changed();
 }
 
@@ -226,6 +228,8 @@ int worker_submit(job_type type, const char *id, const char *title)
     job.total = -1;
     job.error[0] = 0;
     job.messages[0] = 0;
+    job.run_path[0] = 0;
+    job.run_title[0] = 0;
     job.new_store = NULL;
     job.stage[0] = 0;
     pm_strlcpy(job.id, id ? id : "", sizeof(job.id));

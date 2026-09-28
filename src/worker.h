@@ -34,6 +34,8 @@ typedef struct {
 
     char error[256];
     char messages[512];
+    char run_path[256];         /* JOB_INSTALL: program to offer to start ("run" step) */
+    char run_title[64];
 
     store_t *new_store;         /* JOB_REFRESH result */
     volatile int icons_done;    /* JOB_ICONS progress, bumps on every icon */

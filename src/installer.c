@@ -191,6 +191,15 @@ int installer_resolve_path(const install_ctx *ctx, const char *in, char *out, in
     return 0;
 }
 
+int installer_check_path(const install_ctx *ctx, const char *path, char *out, int size)
+{
+    char dev[16], rest[PM_PATH_MAX];
+    if (!path || split_device(path, dev, sizeof(dev), rest, sizeof(rest)) < 0) return -1;
+    if (!is_writable(ctx, dev, rest)) return -1;
+    int n = snprintf(out, size, "%s:/%s", dev, rest);
+    return (n < 0 || n >= size) ? -1 : 0;
+}
+
 static int model_matches(const install_ctx *ctx, const cJSON *v)
 {
     const cJSON *it;
@@ -345,9 +354,9 @@ static int extract_select(void *ud, const char *relpath, int64_t size, char *des
     const char *target = get_bool(step, "flatten", 0) ? pm_basename(rel) : rel;
     if (snprintf(dest, destlen, "%s%s", rs->output, target) >= destlen) return fail(rs, "Path too long: %s", rel);
 
-    /* re-validate the final path (rel is already sanitized) */
+    /* re-validate the final path (rel is already sanitized; file names may contain '%') */
     char checked[PM_PATH_MAX];
-    if (installer_resolve_path(rs->ctx, dest, checked, sizeof(checked), 1) < 0)
+    if (installer_check_path(rs->ctx, dest, checked, sizeof(checked)) < 0)
         return fail(rs, "Refused to write %s", dest);
 
     const cJSON *keep = cJSON_GetObjectItemCaseSensitive(step, "keep");
@@ -522,6 +531,49 @@ static void step_message(run_state *rs, const cJSON *step)
     pm_strlcat(ctx->messages, text, sizeof(ctx->messages));
 }
 
+/* "run": once the install is done, the app offers to start this program
+   (an EBOOT.PBP in PSP/GAME or PSP/APPS). Nothing is started here. */
+static int step_run(run_state *rs, const cJSON *step)
+{
+    const char *p = get_str(step, "path");
+    char path[PM_PATH_MAX], dev[16], rest[PM_PATH_MAX];
+    if (!p || installer_resolve_path(rs->ctx, p, path, sizeof(path), 1) < 0 ||
+            split_device(path, dev, sizeof(dev), rest, sizeof(rest)) < 0)
+        return fail(rs, "Invalid program path '%s'", p);
+    if ((pm_strncasecmp(rest, "PSP/GAME/", 9) != 0 && pm_strncasecmp(rest, "PSP/APPS/", 9) != 0) ||
+            pm_strcasecmp(pm_basename(rest), "EBOOT.PBP") != 0)
+        return fail(rs, "Only an EBOOT.PBP in PSP/GAME or PSP/APPS can be started: '%s'", p);
+    if (!fs_exists(path)) return fail(rs, "The program to start is missing: %s", path);
+    pm_strlcpy(rs->ctx->run_path, path, sizeof(rs->ctx->run_path));
+    const char *title = get_str(step, "title");
+    pm_strlcpy(rs->ctx->run_title, title ? title : "", sizeof(rs->ctx->run_title));
+    return 0;
+}
+
+int installer_read_version_file(const install_ctx *ctx, const char *spec, char *out, int size)
+{
+    char path[PM_PATH_MAX], dev[16], rest[PM_PATH_MAX];
+    if (size > 0) out[0] = 0;
+    if (installer_resolve_path(ctx, spec, path, sizeof(path), 0) < 0 ||
+            split_device(path, dev, sizeof(dev), rest, sizeof(rest)) < 0 ||
+            (pm_strcasecmp(dev, "ms0") != 0 && pm_strcasecmp(dev, "ef0") != 0))
+        return -1;
+
+    char *text = fs_read_all(path, NULL, 256);
+    if (!text) return -1;
+    char *line = pm_trim(text);
+    line[strcspn(line, "\r\n")] = 0;
+    pm_trim(line);
+
+    /* "5.1.6", "1.0h3" or "2026-09-12": what pm_version_compare understands */
+    int ok = line[0] != 0 && strlen(line) < (size_t)size;
+    for (const char *c = line; ok && *c; c++)
+        ok = isalnum((unsigned char)*c) || *c == '.' || *c == '-' || *c == '_';
+    if (ok) pm_strlcpy(out, line, size);
+    free(text);
+    return ok ? 0 : -1;
+}
+
 static int cmp_len_desc(const void *a, const void *b)
 {
     size_t la = strlen(*(char *const *)a), lb = strlen(*(char *const *)b);
@@ -606,6 +658,8 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     rs.errlen = errlen;
     err[0] = 0;
     ctx->messages[0] = 0;
+    ctx->run_path[0] = 0;
+    ctx->run_title[0] = 0;
 
     db_package *rec = calloc(1, sizeof(db_package));
     if (!rec) {
@@ -645,6 +699,7 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
         else if (!strcmp(type, "delete")) ret = step_delete(&rs, step);
         else if (!strcmp(type, "plugin")) ret = step_plugin(&rs, step);
         else if (!strcmp(type, "message")) step_message(&rs, step);
+        else if (!strcmp(type, "run")) ret = step_run(&rs, step);
         if (ret < 0) break;
     }
 
@@ -667,7 +722,7 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
             for (int i = 0; i < old->n_files; i++) {
                 if (!db_list_has(rec->files, rec->n_files, old->files[i])) {
                     char checked[PM_PATH_MAX];
-                    if (installer_resolve_path(ctx, old->files[i], checked, sizeof(checked), 1) == 0)
+                    if (installer_check_path(ctx, old->files[i], checked, sizeof(checked)) == 0)
                         fs_remove(checked);
                 }
             }
@@ -681,6 +736,7 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     }
 
     /* failure */
+    ctx->run_path[0] = 0;
     if (old) {
         /* keep owning everything so a later uninstall cleans up */
         db_package *merged = rec;
@@ -730,7 +786,7 @@ int installer_uninstall(install_ctx *ctx, db_t *db, const char *id, char *err, i
     for (int i = 0; i < p->n_files; i++) {
         char checked[PM_PATH_MAX];
         /* never trust the db blindly: only delete inside the allowed folders */
-        if (installer_resolve_path(ctx, p->files[i], checked, sizeof(checked), 1) == 0)
+        if (installer_check_path(ctx, p->files[i], checked, sizeof(checked)) == 0)
             fs_remove(checked);
         if (ctx->progress) ctx->progress(ctx, "Removing files", i + 1, p->n_files);
     }
@@ -739,7 +795,7 @@ int installer_uninstall(install_ctx *ctx, db_t *db, const char *id, char *err, i
     int nd = 0;
     for (int i = 0; i < p->n_dirs; i++) {
         char checked[PM_PATH_MAX];
-        if (installer_resolve_path(ctx, p->dirs[i], checked, sizeof(checked), 1) == 0)
+        if (installer_check_path(ctx, p->dirs[i], checked, sizeof(checked)) == 0)
             db_list_add(&dirs, &nd, checked);
     }
     remove_empty_dirs(dirs, nd);
