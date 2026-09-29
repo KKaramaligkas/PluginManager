@@ -1,6 +1,6 @@
 /*
     Plugin Manager for ARK-5
-    net.c: Wi-Fi connection (system dialog) and HTTPS downloads.
+    net.c: Wi-Fi connection (automatic, or the system dialog) and HTTPS downloads.
 
     The PSP's own SSL library only speaks obsolete protocol versions, so all
     transfers go through libcurl + mbedTLS (TLS 1.2). The CA bundle is parsed
@@ -27,6 +27,7 @@
 #include <pspnet_resolver.h>
 #include <psprtc.h>
 #include <psputility.h>
+#include <psputility_netparam.h>
 #include <psputils.h>
 #include <pspwlan.h>
 #include <time.h>
@@ -51,6 +52,15 @@ _Static_assert(TLSDIAG_EXPIRED == MBEDTLS_X509_BADCERT_EXPIRED && TLSDIAG_REVOKE
 /* kernel errors for a memory allocation that failed */
 #define KERNEL_NO_MEMORY                0x80020190
 #define KERNEL_MEMBLOCK_ALLOC_FAILED    0x800200D9
+
+/* stubs.S: the network connection the PSP used last (1 to n) */
+int sceUtilityGetNetParamLatestID(int *id);
+
+/* network connections are numbered from 1; the PSP keeps a handful */
+#define MAX_PROFILES    32
+/* how long an automatic connection may take */
+#define AUTO_TIMEOUT_US     (30 * 1000 * 1000)
+#define AUTO_START_US       (5 * 1000 * 1000)
 
 /* memory pool of the TCP/IP stack (socket buffers) */
 #define NET_POOL_SIZE   (256 * 1024)
@@ -238,6 +248,121 @@ int net_connect_dialog(void (*draw)(void *ud), void *ud)
     }
     /* cancelled, or the dialog already showed why it couldn't connect */
     return NET_CANCELLED;
+}
+
+/* Name of network connection `id`; -1 when there's none with that number. */
+static int profile_name(int id, char *out, int size)
+{
+    netData d;
+    memset(&d, 0, sizeof(d));
+    if (sceUtilityCheckNetParam(id) != 0 || sceUtilityGetNetParam(id, PSP_NETPARAM_NAME, &d) != 0) return -1;
+    d.asString[sizeof(d.asString) - 1] = 0;
+    pm_strlcpy(out, d.asString, size);
+    return 0;
+}
+
+/* The connection to use without asking (see net_connect_auto()). Returns its
+   number and name, or 0. */
+static int pick_profile(const char *last_name, char *name, int size)
+{
+    char n[128];
+    int count = 0, only = 0;
+    for (int id = 1; id <= MAX_PROFILES; id++) {
+        if (profile_name(id, n, sizeof(n)) < 0) continue;
+        if (last_name && last_name[0] && !strcmp(n, last_name)) {
+            pm_strlcpy(name, n, size);
+            return id;
+        }
+        count++;
+        only = id;
+    }
+    int latest = 0;
+    if (sceUtilityGetNetParamLatestID(&latest) >= 0 && latest >= 1 && latest <= MAX_PROFILES &&
+            profile_name(latest, name, size) == 0)
+        return latest;
+    if (count == 1 && profile_name(only, name, size) == 0) return only;
+    return 0;
+}
+
+static volatile int apctl_error;
+
+static void apctl_handler(int old_state, int new_state, int event, int error, void *arg)
+{
+    (void)old_state;
+    (void)new_state;
+    (void)arg;
+    if (event == PSP_NET_APCTL_EVENT_ERROR) apctl_error = error;
+}
+
+int net_connect_auto(const char *last_name, int (*frame)(void *ud, const char *name), void *ud)
+{
+    int r = net_init();
+    if (r < 0) return r;
+    if (net_is_connected()) return NET_CONNECTED;
+
+    char name[128];
+    int id = pick_profile(last_name, name, sizeof(name));
+    if (id <= 0) return NET_NO_PROFILE;
+
+    apctl_error = 0;
+    int handler = sceNetApctlAddHandler(apctl_handler, NULL);
+    if ((r = sceNetApctlConnect(id)) < 0) {
+        if (handler >= 0) sceNetApctlDelHandler(handler);
+        snprintf(last_error, sizeof(last_error), "Couldn't connect to %s (error %08X).", name, (unsigned)r);
+        return r;
+    }
+
+    /* the state goes from disconnected through scanning and joining to
+       "got IP"; back to disconnected means the attempt failed */
+    unsigned int start = sceKernelGetSystemTimeLow();
+    int started = 0, result = -1;
+    for (;;) {
+        if (frame && frame(ud, name)) {
+            result = NET_CANCELLED;
+            break;
+        }
+        int state = apctl_state();
+        unsigned int elapsed = sceKernelGetSystemTimeLow() - start;
+        if (state == PSP_NET_APCTL_STATE_GOT_IP) {
+            result = NET_CONNECTED;
+            break;
+        }
+        if (state != PSP_NET_APCTL_STATE_DISCONNECTED) started = 1;
+        else if (started || apctl_error || elapsed > AUTO_START_US) break;
+        if (elapsed > AUTO_TIMEOUT_US) break;
+    }
+    if (handler >= 0) sceNetApctlDelHandler(handler);
+
+    if (result != NET_CONNECTED) net_disconnect();
+    if (result < 0) {
+        if (apctl_error)
+            snprintf(last_error, sizeof(last_error), "Couldn't connect to %s (error %08X).", name, (unsigned)apctl_error);
+        else
+            snprintf(last_error, sizeof(last_error), "Couldn't connect to %s.", name);
+    }
+    return result;
+}
+
+void net_profile_name(char *out, int size)
+{
+    union SceNetApctlInfo info;
+    memset(&info, 0, sizeof(info));
+    if (size <= 0) return;
+    out[0] = 0;
+    if (net_is_connected() && sceNetApctlGetInfo(PSP_NET_APCTL_INFO_PROFILE_NAME, &info) == 0) {
+        info.name[sizeof(info.name) - 1] = 0;
+        pm_strlcpy(out, info.name, size);
+    }
+}
+
+void net_disconnect(void)
+{
+    if (!inited || apctl_state() == PSP_NET_APCTL_STATE_DISCONNECTED) return;
+    sceNetApctlDisconnect();
+    /* the state changes a moment later; until then the PSP still looks
+       connected, and a new connection can't start */
+    for (int i = 0; i < 300 && apctl_state() != PSP_NET_APCTL_STATE_DISCONNECTED; i++)
+        sceKernelDelayThread(10 * 1000);
 }
 
 void net_set_tls(const char *ca_file, int verify)

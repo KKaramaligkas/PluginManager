@@ -65,6 +65,8 @@ exit the app so the XMB reloads.
 Settings:
 
 - **Store address**: the default store, or any other store served over https.
+- **Wi-Fi network**: the network connection the app uses without asking.
+  Choosing it opens the PSP's connection dialog to pick another one.
 - **Install to** (PSP Go with a memory stick): the memory stick or the
   internal storage.
 - **"Plugins" category in the XMB**: off by default.
@@ -75,10 +77,15 @@ Settings:
 ### If it can't connect
 
 The top bar shows **Online**, **Offline** or **Wi-Fi off** (the WLAN switch).
-The app connects through the PSP's own connection dialog, with the
-connections set up in *Settings → Network Settings*. If the network can't
-start, a message names the step that failed and gives the system error code.
-Error `80020190` means the PSP ran out of memory.
+The app uses the connections set up in *Settings → Network Settings*. It
+connects without asking to the one it used last. The first time, that's the
+connection the PSP used last, or the only one there is. While it shows
+*Connecting to …*, ○ opens the PSP's connection dialog to pick another
+network. The dialog also opens when that connection fails. The app remembers
+the network it connected to, in `data/settings.json`.
+
+If the network can't start, a message names the step that failed and gives the
+system error code. Error `80020190` means the PSP ran out of memory.
 
 When a secure connection fails, the message says why: a certificate that
 isn't valid yet or has expired (with its date and the PSP's clock), one
@@ -146,7 +153,7 @@ Everything lives in `PSP/APPS/PluginManager/`:
 | `EBOOT.PBP` | the app |
 | `cacert.pem` | certificate authorities for HTTPS (Mozilla's list, `tools/update_cacert.sh`) |
 | `store.json` | built-in copy of the store, used until one is downloaded |
-| `data/settings.json` | settings |
+| `data/settings.json` | settings, and the Wi-Fi connection used last |
 | `data/installed.json` | what each package installed: files, folders and `PLUGINS.TXT` lines |
 | `data/store.json`, `data/icons/` | last downloaded store and its icons |
 | `data/xmbnames.txt` | plugin list read by XMBControl for the Plugins category |
@@ -287,6 +294,11 @@ A complete entry:
    result, as well as updates and uninstalls.
 4. Increase `storeInfo.revision`.
 
+Packages whose author publishes no usable download are built from source into
+`store/packages/` and served from this repository. For now that's
+UmdImageCreator: `tools/build_umdimagecreator.sh` builds it from the author's
+tag, with the source unchanged.
+
 ## Building
 
 You need the [pspdev](https://github.com/pspdev/pspdev) toolchain and these
@@ -341,6 +353,8 @@ What has been checked:
 
 - In PPSSPP:
   - the whole app;
+  - connecting to Wi-Fi without the dialog, ○ to pick another network, and
+    choosing it in the settings (PPSSPP has one network connection);
   - updating ARK: the version check, the download of `ARK_UPDATE.zip` from a
     local copy of the store, and the app closing to start the updater (PPSSPP
     has no ARK, so the start itself is left to a real console);
@@ -351,7 +365,7 @@ What has been checked:
   - installs of rar, tar.gz and zip packages, including a 36 MB, 579-file
     emulator, identical file by file to the reference install;
   - the XMB launch request.
-- On the PC: the test suite, with the eighteen entries of the default store,
+- On the PC: the test suite, with the nineteen entries of the default store,
   and the ARK updater's install steps.
 - On a PSP, with ARK 5.1.6: the XMB with the newer VSHControl and XMBControl,
   starting the app from the XMB, the Wi-Fi connection, and the store over

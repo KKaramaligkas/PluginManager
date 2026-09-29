@@ -72,7 +72,7 @@ enum {
     MENU_STORE_DEFAULT, MENU_STORE_CUSTOM,
 };
 enum {
-    SET_STORE, SET_ROOT, SET_XMB, SET_TLS, SET_AUTO, SET_ICONS, SET_ABOUT, SET_COUNT,
+    SET_STORE, SET_WIFI, SET_ROOT, SET_XMB, SET_TLS, SET_AUTO, SET_ICONS, SET_ABOUT, SET_COUNT,
 };
 
 static const char *filter_names[F_COUNT] = {
@@ -764,6 +764,7 @@ static void setting_value(int i, char *out, int size)
     case SET_STORE:
         pm_strlcpy(out, strcmp(app.cfg.store_url, PM_DEFAULT_STORE) ? app.cfg.store_url : "Default store", size);
         break;
+    case SET_WIFI: pm_strlcpy(out, app.cfg.wifi[0] ? app.cfg.wifi : "The one used last", size); break;
     case SET_ROOT:
         pm_strlcpy(out, !strcmp(app.cfg.root, "ef0:/") ? "Internal storage (ef0)" : "Memory Stick (ms0)", size);
         break;
@@ -778,6 +779,7 @@ static const char *setting_label(int i)
 {
     switch (i) {
     case SET_STORE: return "Store address";
+    case SET_WIFI: return "Wi-Fi network";
     case SET_ROOT: return "Install to";
     case SET_XMB: return "\"Plugins\" category in the XMB";
     case SET_TLS: return "Verify HTTPS certificates";
@@ -792,6 +794,7 @@ static const char *setting_help(int i)
 {
     switch (i) {
     case SET_STORE: return "Where the list of plugins and homebrew is downloaded from.";
+    case SET_WIFI: return "The app connects to it without asking. Change it to pick another network.";
     case SET_ROOT: return "Storage used for new installs on a PSP Go.";
     case SET_XMB: return "Lists your plugins in the XMB, in place of the PlayStation Network column.";
     case SET_TLS: return "Keep this on: it protects downloads from tampering.";
@@ -1024,14 +1027,65 @@ static int osk_input(const char *title, const char *initial, char *out, int outl
 /* ------------------------------------------------------------------------ */
 /* jobs */
 
+/* saves the network connection in use, which the app picks next time */
+static void remember_network(void)
+{
+    char name[sizeof(app.cfg.wifi)];
+    net_profile_name(name, sizeof(name));
+    if (name[0] && strcmp(name, app.cfg.wifi)) {
+        pm_strlcpy(app.cfg.wifi, name, sizeof(app.cfg.wifi));
+        app_settings_save();
+    }
+}
+
 /* shows the system connection dialog; errors are reported, a cancelled
    dialog isn't (the dialog itself shows why a connection failed) */
-static int connect_wifi(void)
+static int connect_dialog(void)
 {
     int r = net_connect_dialog(draw_scene, NULL);
     input_flush();
     if (r < 0) message("Can't connect", net_last_error());
+    if (r == NET_CONNECTED) remember_network();
     return r == NET_CONNECTED;
+}
+
+/* a frame of the automatic connection; returns 1 when the user asks for the
+   dialog instead */
+static int connect_frame(void *ud, const char *name)
+{
+    (void)ud;
+    input_state in;
+    input_update(&in);
+
+    gfx_begin();
+    draw_scene(NULL);
+    float cx, cy, cw;
+    char line[160];
+    snprintf(line, sizeof(line), "Connecting to %s...", name);
+    ui_modal(300, 86, "Wi-Fi", &cx, &cy, &cw);
+    text_draw_fit(cx, cy, cw, line, 0.58f, C_DIM, 0);
+    ui_hint(cx + cw, cy + 26, GLYPH_CIRCLE, "Choose another network");
+    gfx_end();
+    gfx_swap();
+    ui_frame++;
+    return (in.pressed & BTN_CANCEL) != 0;
+}
+
+/* connects to the network used last without asking; the system dialog when
+   there's none to pick, it fails or the user asks for it */
+static int connect_wifi(void)
+{
+    int r = net_connect_auto(app.cfg.wifi, connect_frame, NULL);
+    input_flush();
+    if (r == NET_CONNECTED) {
+        remember_network();
+        return 1;
+    }
+    char failed[200] = "";
+    if (r < 0) pm_strlcpy(failed, net_last_error(), sizeof(failed));
+    if (connect_dialog()) return 1;
+    if (failed[0] && ui.modal == MODAL_NONE) toast(failed);
+    return 0;
 }
 
 static int ensure_online(void)
@@ -1394,6 +1448,15 @@ static void settings_change(int i)
         menu_open("Store address");
         menu_add(MENU_STORE_DEFAULT, "Use the default store");
         menu_add(MENU_STORE_CUSTOM, "Enter another address...");
+        break;
+    case SET_WIFI:
+        if (!net_wlan_switch_on()) {
+            message("Wireless is off", "Turn on the WLAN switch of your PSP and try again.");
+            break;
+        }
+        wait_worker_idle();
+        net_disconnect();
+        if (connect_dialog()) start_icons();
         break;
     case SET_ROOT:
         pm_strlcpy(app.cfg.root, !strcmp(app.cfg.root, "ef0:/") ? "ms0:/" : "ef0:/", sizeof(app.cfg.root));

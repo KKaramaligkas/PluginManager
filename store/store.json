@@ -6,14 +6,14 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 6
+    "revision": 7
   },
   "entries": [
     {
       "id": "ark",
       "title": "ARK-5",
       "author": "PSP-Arkfive",
-      "version": "5.1.7",
+      "version": "5.1.8",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -31,7 +31,7 @@
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.4",
+      "version": "1.0.5",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -346,6 +346,25 @@
       "install": [
         { "type": "download", "url": "https://github.com/chriopter/psp-tuxracer/releases/download/v0.6.0/extremetuxracer-psp.zip", "file": "tuxracer.zip", "sha256": "34b919d7452b6716898360d5cff29c92f33bb8208e6579576942fad4956eaa5e" },
         { "type": "extract", "file": "tuxracer.zip", "input": "PSP/GAME/ExtremeTuxRacer/", "output": "%GAME%ExtremeTuxRacer/", "keep": "config/options.txt" }
+      ]
+    },
+    {
+      "id": "umdimagecreator",
+      "title": "UmdImageCreator",
+      "author": "sarami",
+      "version": "1.7",
+      "category": "utility",
+      "license": "Apache-2.0",
+      "website": "https://github.com/saramibreak/UmdImageCreator",
+      "icon": "umdimagecreator.png",
+      "size": 98050,
+      "updated": "2024-06-01",
+      "description": "Dumps the UMD in the drive to the memory stick, like GodMode9 on the 3DS. Start it from the Game column with the disc in and press Circle: it writes ISO/<disc ID>.iso (UMD Video discs go to ISO/VIDEO/), which ARK lists in the Game column and plays like the disc. It also writes logs for checking the dump against Redump's database. Cross writes the logs only, Triangle quits. Built from the author's v1.7 source by FasterARK powerup.",
+      "notes": "Needs a UMD drive: not for the PSP Go or the PS Vita. Don't press Square, L or R: they run the author's test commands, which write files to the memory stick's root. The app says \"Done\" even when a read error stopped the dump early, so compare the ISO's size with the disc size in the log. Keep the charger plugged in.",
+      "install": [
+        { "type": "download", "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/packages/UmdImageCreator-1.7.zip", "file": "umdimagecreator.zip", "sha256": "d1df2932988f7197faab4db87e119385552e39f3de8dbacc07fc272fedeccb03" },
+        { "type": "extract", "file": "umdimagecreator.zip", "input": "PSP/GAME/UmdImageCreator/", "output": "%GAME%UmdImageCreator/" },
+        { "type": "extract", "file": "umdimagecreator.zip", "input": "seplugins/", "output": "%SEPLUGINS%", "include": ["pspumdman.prx"] }
       ]
     }
   ]

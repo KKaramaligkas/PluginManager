@@ -41,6 +41,7 @@ TILES = [
     ("zerovsh", "ZeroVSH Patcher", "VSH plugin", "plugin"),
     ("remotejoylite", "RemoteJoyLite", "Screen streaming", "plugin"),
     ("aemu", "PRO Online", "Online ad-hoc play", "plugin"),
+    ("umdimagecreator", "UmdImageCreator", "UMD to ISO", "utility"),
 ]
 
 

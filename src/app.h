@@ -45,6 +45,7 @@ typedef struct {
     char root[16];              /* install device: "ms0:/" or "ef0:/" */
     int verify_tls;
     int auto_refresh;
+    char wifi[64];              /* network connection used last ("" none yet) */
 } settings_t;
 
 typedef struct {

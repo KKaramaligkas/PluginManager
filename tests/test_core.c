@@ -181,7 +181,7 @@ static void test_store(void)
             CHECK((long)fread(buf, 1, n, f) == n);
             fclose(f);
             CHECK_INT(store_parse(&st, buf, NULL, err, sizeof(err)), 0);
-            CHECK_INT(st.count, 18);
+            CHECK_INT(st.count, 19);
             for (int i = 0; i < st.count; i++) {
                 CHECK(st.entries[i].icon != NULL);
                 CHECK(st.entries[i].icon && pm_starts_with(st.entries[i].icon,

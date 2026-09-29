@@ -99,6 +99,7 @@ void app_settings_load(void)
     snprintf(c->root, sizeof(c->root), "%.4s/", app.app_dir);
     c->verify_tls = 1;
     c->auto_refresh = 1;
+    c->wifi[0] = 0;
 
     char *text = fs_read_all(app.settings_file, NULL, 64 * 1024);
     if (!text) return;
@@ -116,6 +117,8 @@ void app_settings_load(void)
     if (cJSON_IsBool(it)) c->verify_tls = cJSON_IsTrue(it);
     it = cJSON_GetObjectItemCaseSensitive(root, "autoRefresh");
     if (cJSON_IsBool(it)) c->auto_refresh = cJSON_IsTrue(it);
+    it = cJSON_GetObjectItemCaseSensitive(root, "wifi");
+    if (cJSON_IsString(it)) pm_strlcpy(c->wifi, it->valuestring, sizeof(c->wifi));
     cJSON_Delete(root);
 
     /* the install device must exist */
@@ -130,6 +133,7 @@ void app_settings_save(void)
     cJSON_AddStringToObject(root, "root", app.cfg.root);
     cJSON_AddBoolToObject(root, "verifyTls", app.cfg.verify_tls);
     cJSON_AddBoolToObject(root, "autoRefresh", app.cfg.auto_refresh);
+    cJSON_AddStringToObject(root, "wifi", app.cfg.wifi);
     char *text = cJSON_Print(root);
     cJSON_Delete(root);
     if (text) {
