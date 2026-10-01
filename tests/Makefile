@@ -9,7 +9,7 @@ CFLAGS  ?= -O1 -g -Wall -Wextra -Wno-unused-parameter -std=gnu99 -fsanitize=addr
 LDLIBS   = -lcjson -lunarr -lmbedcrypto -lz
 
 CORE     = ../src/util.c ../src/fs.c ../src/store.c ../src/pluginstxt.c ../src/db.c \
-           ../src/archive.c ../src/installer.c ../src/tlsdiag.c
+           ../src/archive.c ../src/installer.c ../src/transaction.c ../src/tlsdiag.c
 SEED     = $(abspath ../store/store.json)
 WORK     = $(CURDIR)/work
 
@@ -23,9 +23,14 @@ test_core: test_core.c $(CORE) test.h
 test_install: test_install.c $(CORE) test.h
 	$(CC) $(CFLAGS) -o $@ test_install.c $(CORE) $(LDLIBS)
 
-check: test_core
+test_transaction: test_transaction.c $(CORE) test.h
+	$(CC) $(CFLAGS) -DPM_FS_TESTING -o $@ test_transaction.c $(CORE) $(LDLIBS)
+
+check: test_core test_transaction
 	rm -rf $(WORK)/core && mkdir -p $(WORK)/core/ms0 $(WORK)/core/ef0
 	PM_FS_ROOT=$(WORK)/core PM_SEED_STORE=$(SEED) ./test_core
+	rm -rf $(WORK)/transaction && mkdir -p $(WORK)/transaction/ms0 $(WORK)/transaction/ef0
+	PM_FS_ROOT=$(WORK)/transaction ./test_transaction
 
 install: test_install
 	rm -rf $(WORK)/install && mkdir -p $(WORK)/install/ms0 $(WORK)/install/ef0
@@ -36,7 +41,7 @@ live: test_install
 	PM_FS_ROOT=$(WORK)/live PM_SEED_STORE=$(SEED) PM_LIVE=1 ./test_install
 
 clean:
-	rm -rf test_core test_install hostinstall $(WORK)
+	rm -rf test_core test_transaction test_install hostinstall $(WORK)
 
 hostinstall: hostinstall.c $(CORE)
 	$(CC) -O1 -g -Wall -std=gnu99 -o $@ hostinstall.c $(CORE) $(LDLIBS)

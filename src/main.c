@@ -29,6 +29,7 @@
 #include "net.h"
 #include "pluginstxt.h"
 #include "text.h"
+#include "transaction.h"
 #include "ui.h"
 #include "version.h"
 #include "worker.h"
@@ -1652,6 +1653,23 @@ int main(int argc, char *argv[])
 
     app_init_paths(argc > 0 ? argv[0] : NULL);
     app_settings_load();
+    install_ctx recovery_ctx;
+    char recovery_error[256] = "";
+    app_fill_install_ctx(&recovery_ctx);
+    if (txn_recover(&recovery_ctx, recovery_error, sizeof(recovery_error)) < 0) {
+        /* Do not load or overwrite the database while recovery is incomplete. */
+        message("Recovery needed", recovery_error);
+        input_state recovery_input;
+        while (!exit_requested && ui.modal != MODAL_NONE) {
+            input_update(&recovery_input);
+            handle_modal(&recovery_input);
+            render();
+        }
+        text_term();
+        gfx_term();
+        sceKernelExitGame();
+        return 1;
+    }
     app_db_load();
     net_set_tls(app.ca_file, app.cfg.verify_tls);
     net_set_report_file(app.tls_report);

@@ -209,6 +209,19 @@ Entries with errors are skipped, and the rest of the store still loads.
 Steps run in order. The first one that fails stops the install. On an update,
 a failure leaves the previous version in place.
 
+Files are extracted or copied into staging files before installed files change.
+Commit includes removed files, `PLUGINS.TXT`, and `data/installed.json`.
+If a write fails or the operation is cancelled, the originals are restored.
+An interrupted commit is recovered on the next launch, before the database is
+loaded. Keep `data/tmp/transaction/` intact until recovery finishes. If storage
+is disconnected or recovery cannot finish, reconnect it and restart the app;
+the app refuses further changes while recovery is incomplete.
+
+Staging and backups require extra free space. This recovery applies to the
+Plugin Manager's file installation, not the firmware writes performed later by
+the separate ARK Updater. Real-device power interruption testing is still
+required; filesystem or storage corruption can prevent automatic recovery.
+
 | `type` | Fields |
 | --- | --- |
 | `download` | `url`; `file`: name for the download (default: end of the URL); `sha256`: recommended, and required for `http://` URLs |
@@ -326,7 +339,8 @@ and on the PSP the socket functions would call the wrong system functions.
 ## Testing
 
 - `make -C PluginManager/tests check`: unit tests (store parsing, paths,
-  `PLUGINS.TXT` editing, database, installer rules), built with
+  `PLUGINS.TXT` editing, database, installer rules, cancellation, failed writes
+  and recovery after an interrupted commit), built with
   AddressSanitizer and UBSan.
 - `make -C PluginManager/tests install PKG_DIR=…`: installs, updates and
   uninstalls every store entry from local copies of the archives.

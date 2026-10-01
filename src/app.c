@@ -417,6 +417,7 @@ void app_fill_install_ctx(install_ctx *ctx)
     pm_strlcpy(ctx->ark_path, app.ark_path, sizeof(ctx->ark_path));
     pm_strlcpy(ctx->temp_dir, app.temp_dir, sizeof(ctx->temp_dir));
     pm_strlcpy(ctx->protect_dir, app.data_dir, sizeof(ctx->protect_dir));
+    pm_strlcpy(ctx->db_file, app.db_file, sizeof(ctx->db_file));
     ctx->model = app.model;
     ctx->store_url = app.cfg.store_url;
 }

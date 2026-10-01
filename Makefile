@@ -1,7 +1,7 @@
 TARGET = pluginmanager
 OBJS = src/main.o src/app.o src/worker.o src/ui.o src/gfx.o src/text.o src/image.o \
        src/input.o src/net.o src/tlsdiag.o src/clock.o src/stubs.o src/entropy.o \
-       src/util.o src/fs.o src/store.o src/pluginstxt.o src/db.o src/archive.o src/installer.o
+       src/util.o src/fs.o src/store.o src/pluginstxt.o src/db.o src/archive.o src/installer.o src/transaction.o
 
 CFLAGS = -O2 -G0 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -std=gnu99 $(EXTRA_CFLAGS)
 CXXFLAGS = $(CFLAGS) -fno-exceptions -fno-rtti

@@ -19,6 +19,7 @@
 #include "fs.h"
 #include "installer.h"
 #include "pluginstxt.h"
+#include "transaction.h"
 #include "util.h"
 
 /* Folders (relative to ms0:/ or ef0:/) packages may write into. */
@@ -56,6 +57,8 @@ typedef struct {
     char input[PM_PATH_MAX];
     char stage[96];
     char last_download[PM_PATH_MAX];
+    transaction tx;
+    char extract_dest[PM_PATH_MAX];
 } run_state;
 
 void installer_plugins_txt(const char *root, char *out, int size)
@@ -246,12 +249,6 @@ int installer_condition_ok(const install_ctx *ctx, const void *step_ptr)
     return 1;
 }
 
-static void track_dir(void *ud, const char *dir)
-{
-    run_state *rs = ud;
-    db_list_add(&rs->rec->dirs, &rs->rec->n_dirs, dir);
-}
-
 static int fail(run_state *rs, const char *fmt, const char *arg)
 {
     snprintf(rs->err, rs->errlen, fmt, arg ? arg : "");
@@ -367,16 +364,19 @@ static int extract_select(void *ud, const char *relpath, int64_t size, char *des
         return 0;
     }
 
-    char dir[PM_PATH_MAX];
-    pm_dirname(dest, dir, sizeof(dir));
-    if (fs_mkdirs(dir, track_dir, rs) < 0) return fail(rs, "Can't create folder %s", dir);
+    pm_strlcpy(rs->extract_dest, dest, sizeof(rs->extract_dest));
+    char staged[PM_PATH_MAX];
+    if (txn_stage(&rs->tx, dest, staged, sizeof(staged)) < 0)
+        return fail(rs, "Can't stage %s", dest);
+    pm_strlcpy(dest, staged, destlen);
     return 1;
 }
 
 static void extract_written(void *ud, const char *dest)
 {
     run_state *rs = ud;
-    db_list_add(&rs->rec->files, &rs->rec->n_files, dest);
+    (void)dest;
+    db_list_add(&rs->rec->files, &rs->rec->n_files, rs->extract_dest);
 }
 
 static int extract_progress(void *ud, int64_t done, int64_t total)
@@ -444,11 +444,11 @@ static int step_copy(run_state *rs, const cJSON *step)
     size_t tl = strlen(to);
     if (to[tl - 1] == '/') pm_strlcat(dest, pm_basename(src), sizeof(dest));
 
-    char dir[PM_PATH_MAX];
-    pm_dirname(dest, dir, sizeof(dir));
-    if (fs_mkdirs(dir, track_dir, rs) < 0) return fail(rs, "Can't create folder %s", dir);
+    char staged[PM_PATH_MAX];
+    if (txn_stage(&rs->tx, dest, staged, sizeof(staged)) < 0)
+        return fail(rs, "Can't stage %s", dest);
     if (rs->ctx->progress) rs->ctx->progress(rs->ctx, "Copying files", 0, -1);
-    if (fs_copy(src, dest) < 0) return fail(rs, "Can't write %s", dest);
+    if (fs_copy(src, staged) < 0) return fail(rs, "Can't write %s", dest);
     db_list_add(&rs->rec->files, &rs->rec->n_files, dest);
     return 0;
 }
@@ -459,7 +459,7 @@ static int step_mkdir(run_state *rs, const cJSON *step)
     const char *path = get_str(step, "path");
     if (!path || installer_resolve_path(rs->ctx, path, dir, sizeof(dir), 1) < 0)
         return fail(rs, "Invalid folder %s", path);
-    if (fs_mkdirs(dir, track_dir, rs) < 0) return fail(rs, "Can't create folder %s", dir);
+    if (txn_mkdirs(&rs->tx, dir) < 0) return fail(rs, "Can't create folder %s", dir);
     return 0;
 }
 
@@ -469,7 +469,8 @@ static int step_delete(run_state *rs, const cJSON *step)
     const char *path = get_str(step, "path");
     if (!path || installer_resolve_path(rs->ctx, path, file, sizeof(file), 1) < 0)
         return fail(rs, "Invalid path %s", path);
-    if (fs_exists(file) && !fs_is_dir(file)) fs_remove(file);
+    if (!fs_is_dir(file) && txn_delete(&rs->tx, file) < 0)
+        return fail(rs, "Can't stage deletion of %s", file);
     return 0;
 }
 
@@ -543,7 +544,9 @@ static int step_run(run_state *rs, const cJSON *step)
     if ((pm_strncasecmp(rest, "PSP/GAME/", 9) != 0 && pm_strncasecmp(rest, "PSP/APPS/", 9) != 0) ||
             pm_strcasecmp(pm_basename(rest), "EBOOT.PBP") != 0)
         return fail(rs, "Only an EBOOT.PBP in PSP/GAME or PSP/APPS can be started: '%s'", p);
-    if (!fs_exists(path)) return fail(rs, "The program to start is missing: %s", path);
+    char staged[PM_PATH_MAX];
+    const char *source = txn_read_path(&rs->tx, path, staged, sizeof(staged));
+    if (!source || !fs_exists(source)) return fail(rs, "The program to start is missing: %s", path);
     pm_strlcpy(rs->ctx->run_path, path, sizeof(rs->ctx->run_path));
     const char *title = get_str(step, "title");
     pm_strlcpy(rs->ctx->run_title, title ? title : "", sizeof(rs->ctx->run_title));
@@ -628,13 +631,15 @@ static void take_ownership(db_t *db, const db_package *rec)
     }
 }
 
-static int remove_plugin_lines(const char *root, const db_plugin *plugins, int n, const db_package *keep)
+static int remove_plugin_lines(transaction *tx, const char *root, const db_plugin *plugins, int n, const db_package *keep)
 {
     if (n == 0) return 0;
     char file[PM_PATH_MAX];
     installer_plugins_txt(root, file, sizeof(file));
     ptxt_t pt;
-    ptxt_load(&pt, file);
+    char staged[PM_PATH_MAX];
+    const char *source = txn_read_path(tx, file, staged, sizeof(staged));
+    ptxt_load(&pt, source ? source : file);
     for (int i = 0; i < n; i++) {
         int still_used = 0;
         for (int j = 0; keep && j < keep->n_plugins; j++) {
@@ -644,9 +649,42 @@ static int remove_plugin_lines(const char *root, const db_plugin *plugins, int n
         }
         if (!still_used) ptxt_remove(&pt, plugins[i].path, plugins[i].runlevel);
     }
-    int ret = pt.modified ? ptxt_save(&pt, file) : 0;
+    int ret = 0;
+    if (pt.modified) {
+        ret = txn_stage(tx, file, staged, sizeof(staged));
+        if (ret == 0) ret = ptxt_save(&pt, staged);
+    }
     ptxt_free(&pt);
     return ret;
+}
+
+/* Clone before changing ownership; failures leave the caller's database intact. */
+static int clone_db(transaction *tx, const db_t *db, db_t *out)
+{
+    char snapshot[PM_PATH_MAX];
+    memset(out, 0, sizeof(*out));
+    if (snprintf(snapshot, sizeof(snapshot), "%ssnapshot.json", tx->dir) >= (int)sizeof(snapshot) ||
+        db_save(db, snapshot) < 0 || db_load(out, snapshot) < 0 || out->count != db->count) {
+        db_free(out);
+        return -1;
+    }
+    return 0;
+}
+
+static int commit_db(transaction *tx, db_t *candidate, db_t *db, char *err, int errlen)
+{
+    if (tx->ctx->db_file[0]) {
+        char staged[PM_PATH_MAX];
+        if (txn_stage(tx, tx->ctx->db_file, staged, sizeof(staged)) < 0 || db_save(candidate, staged) < 0) {
+            snprintf(err, errlen, "Can't stage the installed-package database");
+            return -1;
+        }
+    }
+    if (txn_commit(tx, err, errlen) < 0) return -1;
+    db_free(db);
+    *db = *candidate;
+    memset(candidate, 0, sizeof(*candidate));
+    return 0;
 }
 
 int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *err, int errlen)
@@ -657,14 +695,15 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     rs.err = err;
     rs.errlen = errlen;
     err[0] = 0;
-    ctx->messages[0] = 0;
-    ctx->run_path[0] = 0;
-    ctx->run_title[0] = 0;
+    ctx->messages[0] = ctx->run_path[0] = ctx->run_title[0] = 0;
+    if (txn_begin(&rs.tx, ctx, err, errlen) < 0) return -1;
 
-    db_package *rec = calloc(1, sizeof(db_package));
-    if (!rec) {
-        snprintf(err, errlen, "Out of memory");
-        return -1;
+    db_t candidate = {0};
+    db_package *rec = calloc(1, sizeof(*rec));
+    int ret = -1;
+    if (!rec || clone_db(&rs.tx, db, &candidate) < 0) {
+        snprintf(err, errlen, "Can't prepare the package database");
+        goto done;
     }
     rs.rec = rec;
     rec->id = pm_strdup(e->id);
@@ -673,23 +712,26 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     rec->category = pm_strdup(store_category_name(e->category));
     rec->root = pm_strdup(ctx->root);
     rec->store = ctx->store_url ? pm_strdup(ctx->store_url) : NULL;
-
+    if (!rec->id || !rec->title || !rec->version || !rec->category || !rec->root ||
+        (ctx->store_url && !rec->store)) {
+        snprintf(err, errlen, "Out of memory");
+        goto done;
+    }
     const db_package *old = db_find(db, e->id);
     rs.old = old;
-
     installer_plugins_txt(ctx->root, rs.ptxt_file, sizeof(rs.ptxt_file));
-    ptxt_load(&rs.ptxt, rs.ptxt_file);
+    if (ptxt_load(&rs.ptxt, rs.ptxt_file) < 0) {
+        snprintf(err, errlen, "Can't read plugin configuration");
+        goto done;
+    }
 
-    int ret = 0;
+    ret = 0;
     const cJSON *step;
     cJSON_ArrayForEach(step, e->install) {
         if (ctx->cancelled && ctx->cancelled(ctx)) {
-            snprintf(err, errlen, "Cancelled");
-            ret = -1;
-            break;
+            snprintf(err, errlen, "Cancelled"); ret = -1; break;
         }
         if (!installer_condition_ok(ctx, step)) continue;
-
         const char *type = get_str(step, "type");
         if (!type) continue;
         if (!strcmp(type, "download")) ret = step_download(&rs, step);
@@ -702,106 +744,90 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
         else if (!strcmp(type, "run")) ret = step_run(&rs, step);
         if (ret < 0) break;
     }
-
-    if (ret == 0 && rs.ptxt.modified && ptxt_save(&rs.ptxt, rs.ptxt_file) < 0) {
-        snprintf(err, errlen, "Can't update %s", rs.ptxt_file);
-        ret = -1;
+    if (ret == 0 && rs.ptxt.modified) {
+        char staged[PM_PATH_MAX];
+        if (txn_stage(&rs.tx, rs.ptxt_file, staged, sizeof(staged)) < 0 || ptxt_save(&rs.ptxt, staged) < 0) {
+            snprintf(err, errlen, "Can't stage plugin configuration"); ret = -1;
+        }
     }
+    if (ret == 0 && old) {
+        for (int i = 0; i < old->n_files; i++) {
+            if (!db_list_has(rec->files, rec->n_files, old->files[i])) {
+                char checked[PM_PATH_MAX];
+                if (installer_check_path(ctx, old->files[i], checked, sizeof(checked)) == 0 &&
+                    txn_delete(&rs.tx, checked) < 0) { ret = -1; break; }
+            }
+        }
+        if (ret == 0 && remove_plugin_lines(&rs.tx, old->root ? old->root : ctx->root,
+                                           old->plugins, old->n_plugins, rec) < 0) ret = -1;
+        for (int i = 0; i < old->n_dirs; i++)
+            if (db_list_add(&rec->dirs, &rec->n_dirs, old->dirs[i]) < 0) ret = -1;
+    }
+    /* New directories belong to the package, so uninstall can remove them. */
+    if (ret == 0) {
+        for (int i = 0; i < rs.tx.count; i++)
+            if (rs.tx.entries[i].kind == 2 && !rs.tx.entries[i].existed &&
+                db_list_add(&rec->dirs, &rec->n_dirs, rs.tx.entries[i].path) < 0) ret = -1;
+    }
+    if (ret == 0) {
+        take_ownership(&candidate, rec);
+        ret = db_put(&candidate, rec);
+        rec = NULL;
+        if (ret == 0) ret = commit_db(&rs.tx, &candidate, db, err, errlen);
+    }
+done:
     ptxt_free(&rs.ptxt);
-
-    /* downloads are not needed anymore */
     for (int i = 0; i < rs.n_temp; i++) {
         fs_remove(rs.temp_files[i]);
         free(rs.temp_files[i]);
     }
     free(rs.temp_files);
-
-    if (ret == 0) {
-        if (old) {
-            /* update: drop what the previous version installed and this one doesn't */
-            for (int i = 0; i < old->n_files; i++) {
-                if (!db_list_has(rec->files, rec->n_files, old->files[i])) {
-                    char checked[PM_PATH_MAX];
-                    if (installer_check_path(ctx, old->files[i], checked, sizeof(checked)) == 0)
-                        fs_remove(checked);
-                }
-            }
-            remove_plugin_lines(old->root ? old->root : ctx->root, old->plugins, old->n_plugins, rec);
-            for (int i = 0; i < old->n_dirs; i++) db_list_add(&rec->dirs, &rec->n_dirs, old->dirs[i]);
-            remove_empty_dirs(rec->dirs, rec->n_dirs);
-        }
-        take_ownership(db, rec);
-        db_put(db, rec);
-        return 0;
+    if (ret < 0) {
+        ctx->messages[0] = ctx->run_path[0] = 0;
+        if (!err[0]) snprintf(err, errlen, "Could not prepare the update");
+        /* Recovery failures replace the original error and retain the backups. */
+        txn_rollback(&rs.tx, err, errlen);
     }
-
-    /* failure */
-    ctx->run_path[0] = 0;
-    if (old) {
-        /* keep owning everything so a later uninstall cleans up */
-        db_package *merged = rec;
-        for (int i = 0; i < old->n_files; i++) db_list_add(&merged->files, &merged->n_files, old->files[i]);
-        for (int i = 0; i < old->n_dirs; i++) db_list_add(&merged->dirs, &merged->n_dirs, old->dirs[i]);
-        for (int i = 0; i < merged->n_plugins; i++) {
-            free(merged->plugins[i].runlevel);
-            free(merged->plugins[i].path);
-        }
-        free(merged->plugins);
-        merged->plugins = NULL;
-        merged->n_plugins = 0;
-        for (int i = 0; i < old->n_plugins; i++) {
-            db_plugin *n = realloc(merged->plugins, sizeof(db_plugin) * (merged->n_plugins + 1));
-            if (!n) break;
-            merged->plugins = n;
-            n[merged->n_plugins].runlevel = pm_strdup(old->plugins[i].runlevel);
-            n[merged->n_plugins].path = pm_strdup(old->plugins[i].path);
-            merged->n_plugins++;
-        }
-        free(merged->version);
-        merged->version = pm_strdup(old->version);
-        db_put(db, merged);
-    }
-    else {
-        for (int i = 0; i < rec->n_files; i++) fs_remove(rec->files[i]);
-        remove_empty_dirs(rec->dirs, rec->n_dirs);
-        db_package_free(rec);
-        free(rec);
-    }
-    return -1;
+    if (rec) { db_package_free(rec); free(rec); }
+    db_free(&candidate);
+    txn_free(&rs.tx);
+    return ret;
 }
 
 int installer_uninstall(install_ctx *ctx, db_t *db, const char *id, char *err, int errlen)
 {
     db_package *p = db_find(db, id);
     err[0] = 0;
-    if (!p) {
-        snprintf(err, errlen, "%s is not installed", id);
-        return -1;
-    }
-
-    if (ctx->progress) ctx->progress(ctx, "Removing files", 0, -1);
-
-    remove_plugin_lines(p->root ? p->root : ctx->root, p->plugins, p->n_plugins, NULL);
-
-    for (int i = 0; i < p->n_files; i++) {
+    if (!p) { snprintf(err, errlen, "%s is not installed", id); return -1; }
+    transaction tx;
+    if (txn_begin(&tx, ctx, err, errlen) < 0) return -1;
+    db_t candidate = {0};
+    int ret = clone_db(&tx, db, &candidate);
+    if (ret == 0) ret = remove_plugin_lines(&tx, p->root ? p->root : ctx->root, p->plugins, p->n_plugins, NULL);
+    for (int i = 0; ret == 0 && i < p->n_files; i++) {
         char checked[PM_PATH_MAX];
-        /* never trust the db blindly: only delete inside the allowed folders */
         if (installer_check_path(ctx, p->files[i], checked, sizeof(checked)) == 0)
-            fs_remove(checked);
-        if (ctx->progress) ctx->progress(ctx, "Removing files", i + 1, p->n_files);
+            ret = txn_delete(&tx, checked);
     }
-
+    /* Keep a copy: commit replaces and frees the caller's database. */
     char **dirs = NULL;
-    int nd = 0;
-    for (int i = 0; i < p->n_dirs; i++) {
+    int n_dirs = 0;
+    for (int i = 0; ret == 0 && i < p->n_dirs; i++) {
         char checked[PM_PATH_MAX];
         if (installer_check_path(ctx, p->dirs[i], checked, sizeof(checked)) == 0)
-            db_list_add(&dirs, &nd, checked);
+            if (db_list_add(&dirs, &n_dirs, checked) < 0) ret = -1;
     }
-    remove_empty_dirs(dirs, nd);
-    for (int i = 0; i < nd; i++) free(dirs[i]);
+    if (ret == 0) {
+        db_remove(&candidate, id);
+        ret = commit_db(&tx, &candidate, db, err, errlen);
+    }
+    if (ret < 0) {
+        if (!err[0]) snprintf(err, errlen, "Could not remove the package");
+        txn_rollback(&tx, err, errlen);
+    } else remove_empty_dirs(dirs, n_dirs);
+    for (int i = 0; i < n_dirs; i++) free(dirs[i]);
     free(dirs);
-
-    db_remove(db, id);
-    return 0;
+    db_free(&candidate);
+    txn_free(&tx);
+    return ret;
 }

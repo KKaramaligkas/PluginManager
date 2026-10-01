@@ -28,6 +28,7 @@ struct install_ctx {
     char ark_path[128];         /* e.g. "ms0:/PSP/SAVEDATA/ARK_01234/" */
     char temp_dir[160];         /* scratch folder for downloads */
     char protect_dir[160];      /* packages may never write here (our own data) */
+    char db_file[256];          /* included in the transaction; empty for in-memory callers */
     int model;                  /* MODEL_* */
     const char *store_url;
 

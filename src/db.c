@@ -177,24 +177,25 @@ db_package *db_find(db_t *db, const char *id)
     return NULL;
 }
 
-void db_put(db_t *db, db_package *pkg)
+int db_put(db_t *db, db_package *pkg)
 {
     db_package *old = db_find(db, pkg->id);
     if (old) {
         db_package_free(old);
         *old = *pkg;
         free(pkg);
-        return;
+        return 0;
     }
     db_package *n = realloc(db->pkgs, sizeof(db_package) * (db->count + 1));
     if (!n) {
         db_package_free(pkg);
         free(pkg);
-        return;
+        return -1;
     }
     db->pkgs = n;
     db->pkgs[db->count++] = *pkg;
     free(pkg);
+    return 0;
 }
 
 void db_remove(db_t *db, const char *id)

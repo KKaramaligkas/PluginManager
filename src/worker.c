@@ -157,7 +157,7 @@ static void do_install(void)
     pm_strlcpy(job.messages, ctx.messages, sizeof(job.messages));
     pm_strlcpy(job.run_path, ctx.run_path, sizeof(job.run_path));
     pm_strlcpy(job.run_title, ctx.run_title, sizeof(job.run_title));
-    app_db_changed();
+    /* The installer commits files and installed.json together. */
 }
 
 static void do_uninstall(void)
@@ -166,7 +166,7 @@ static void do_uninstall(void)
     app_fill_install_ctx(&ctx);
     ctx.progress = ctx_progress;
     job.result = installer_uninstall(&ctx, &app.db, job.id, job.error, sizeof(job.error));
-    app_db_changed();
+    /* The uninstaller commits files and installed.json together. */
 }
 
 static int worker_main(SceSize args, void *argp)

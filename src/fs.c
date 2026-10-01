@@ -95,6 +95,15 @@ int fs_rename(const char *from, const char *to)
     return sceIoRename(from, to) >= 0 ? 0 : -1;
 }
 
+int fs_sync(const char *path)
+{
+    const char *colon = strchr(path, ':');
+    char device[16];
+    if (!colon || colon - path + 2 > (int)sizeof(device)) return -1;
+    snprintf(device, sizeof(device), "%.*s:", (int)(colon - path), path);
+    return sceIoSync(device, 0) >= 0 ? 0 : -1;
+}
+
 const char *fs_native_path(const char *path, char *buf, int size)
 {
     (void)buf;
@@ -126,6 +135,15 @@ int fs_list(const char *path, int (*cb)(void *ud, const char *name, int is_dir),
 #include <sys/stat.h>
 #include <unistd.h>
 
+int fs_sync(const char *path)
+{
+    fs_file f = fs_open(path, FS_READ);
+    if (f < 0) return -1;
+    int ret = fsync(f);
+    fs_close(f);
+    return ret == 0 ? 0 : -1;
+}
+
 /* "ms0:/a/b" -> "$PM_FS_ROOT/ms0/a/b" */
 static const char *map_path(const char *path, char *buf, size_t size)
 {
@@ -155,7 +173,19 @@ fs_file fs_open(const char *path, int mode)
 }
 
 int fs_read(fs_file f, void *buf, int size) { return (int)read(f, buf, size); }
-int fs_write(fs_file f, const void *buf, int size) { return (int)write(f, buf, size); }
+#ifdef PM_FS_TESTING
+static int writes_before_failure = -1;
+void fs_test_fail_after_writes(int n) { writes_before_failure = n; }
+#endif
+
+int fs_write(fs_file f, const void *buf, int size)
+{
+#ifdef PM_FS_TESTING
+    if (writes_before_failure == 0) { writes_before_failure = -1; return -1; }
+    if (writes_before_failure > 0) writes_before_failure--;
+#endif
+    return (int)write(f, buf, size);
+}
 int64_t fs_seek(fs_file f, int64_t offset, int whence) { return lseek(f, offset, whence); }
 void fs_close(fs_file f) { if (f >= 0) close(f); }
 

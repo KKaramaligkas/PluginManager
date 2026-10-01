@@ -31,6 +31,11 @@ int fs_mkdir(const char *path);         /* single level, 0 or already exists */
 int fs_remove(const char *path);
 int fs_rmdir(const char *path);
 int fs_rename(const char *from, const char *to);
+int fs_sync(const char *path); /* flush file/directory changes before journalling */
+#ifdef PM_FS_TESTING
+/* One-shot failure after n successful writes; host tests only. */
+void fs_test_fail_after_writes(int n);
+#endif
 
 /* Creates every missing directory of `path` (a directory path, trailing '/'
    optional). When `created` is not NULL, every directory that did not exist

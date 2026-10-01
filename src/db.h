@@ -37,7 +37,7 @@ void db_free(db_t *db);
 
 db_package *db_find(db_t *db, const char *id);
 /* Replaces (or adds) a package record; takes ownership of `pkg`'s memory. */
-void db_put(db_t *db, db_package *pkg);
+int db_put(db_t *db, db_package *pkg); /* returns -1 on allocation failure */
 void db_remove(db_t *db, const char *id);
 
 void db_package_free(db_package *p);
