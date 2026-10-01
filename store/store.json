@@ -6,7 +6,7 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 7
+    "revision": 8
   },
   "entries": [
     {
@@ -22,7 +22,7 @@
       "description": "The custom firmware itself, as released by FasterARK powerup. Updating downloads the ARK updater from the latest release and starts it: it updates ARK and the Plugin Manager, keeps your settings and plugins, and restarts the console.",
       "notes": "Keep the battery charged, or the charger plugged in, while the updater runs.",
       "install": [
-        { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/latest/download/ARK_UPDATE.zip", "file": "ARK_UPDATE.zip" },
+        { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/download/ARK-5.1.8/ARK_UPDATE.zip", "file": "ARK_UPDATE.zip", "sha256": "9a75cfc22815ede675aec207da9e0f73ff980598749818fcf479c5b696c386f7" },
         { "type": "extract", "file": "ARK_UPDATE.zip", "input": "PSP/GAME/UPDATE/", "output": "%GAME%UPDATE/" },
         { "type": "run", "path": "%GAME%UPDATE/EBOOT.PBP", "title": "ARK Updater" }
       ]
@@ -38,7 +38,7 @@
       "icon": "pluginmanager.png",
       "description": "This app. Browse, install, update and remove plugins and homebrew for ARK-5 without a PC. Your plugins can also be listed in the XMB, in a Plugins category you turn on in the settings.",
       "install": [
-        { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/latest/download/PluginManager.zip", "file": "PluginManager.zip" },
+        { "type": "download", "url": "https://github.com/kkaramaligkas/fasterark_powerup/releases/download/ARK-5.1.8/PluginManager.zip", "file": "PluginManager.zip", "sha256": "b8023f8dd2d5649a817003c3a3fdb8f8c8ab0db44b004a8ccf73d8d651e710a5" },
         { "type": "extract", "file": "PluginManager.zip", "input": "PSP/APPS/PluginManager/", "output": "%APPS%PluginManager/" },
         { "type": "message", "text": "Plugin Manager was updated. Restart it to use the new version." }
       ]
@@ -306,10 +306,10 @@
       "icon": "nzportable.png",
       "size": 64412845,
       "updated": "2026-09-24",
-      "description": "A zombie survival shooter in the style of Call of Duty's zombie mode, built on the Quake engine, with several maps. Runs on every PSP model. It always downloads the latest nightly build.",
-      "notes": "A 64 MB download: keep the charger plugged in.",
+      "description": "A zombie survival shooter in the style of Call of Duty's zombie mode, built on the Quake engine, with several maps. Runs on every PSP model. This entry installs the 2026-09-24 nightly snapshot.",
+      "notes": "A pinned 64 MB nightly snapshot. If upstream removes this asset, the store must be updated to a new snapshot. Keep the charger plugged in.",
       "install": [
-        { "type": "download", "url": "https://github.com/nzp-team/nzportable/releases/download/nightly/nzportable-psp.zip", "file": "nzportable.zip" },
+        { "type": "download", "url": "https://api.github.com/repos/nzp-team/nzportable/releases/assets/585938876", "file": "nzportable.zip", "sha256": "2983183a7d7d6471e8ebf2c5c95290ddd558a1c44d46b9ba6a68e9987f02e89f" },
         { "type": "extract", "file": "nzportable.zip", "input": "nzportable/", "output": "%GAME%nzportable/", "keep": "nzp/config.cfg" }
       ]
     },
@@ -362,10 +362,11 @@
       "description": "Dumps the UMD in the drive to the memory stick, like GodMode9 on the 3DS. Start it from the Game column with the disc in and press Circle: it writes ISO/<disc ID>.iso (UMD Video discs go to ISO/VIDEO/), which ARK lists in the Game column and plays like the disc. It also writes logs for checking the dump against Redump's database. Cross writes the logs only, Triangle quits. Built from the author's v1.7 source by FasterARK powerup.",
       "notes": "Needs a UMD drive: not for the PSP Go or the PS Vita. Don't press Square, L or R: they run the author's test commands, which write files to the memory stick's root. The app says \"Done\" even when a read error stopped the dump early, so compare the ISO's size with the disc size in the log. Keep the charger plugged in.",
       "install": [
-        { "type": "download", "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/packages/UmdImageCreator-1.7.zip", "file": "umdimagecreator.zip", "sha256": "d1df2932988f7197faab4db87e119385552e39f3de8dbacc07fc272fedeccb03" },
+        { "type": "download", "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/92cc2007a4edcf1530f4a0382c0a737c862d64c3/PluginManager/store/packages/UmdImageCreator-1.7.zip", "file": "umdimagecreator.zip", "sha256": "d1df2932988f7197faab4db87e119385552e39f3de8dbacc07fc272fedeccb03" },
         { "type": "extract", "file": "umdimagecreator.zip", "input": "PSP/GAME/UmdImageCreator/", "output": "%GAME%UmdImageCreator/" },
         { "type": "extract", "file": "umdimagecreator.zip", "input": "seplugins/", "output": "%SEPLUGINS%", "include": ["pspumdman.prx"] }
       ]
     }
   ]
 }
+

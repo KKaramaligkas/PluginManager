@@ -565,6 +565,14 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     char errbuf[CURL_ERROR_SIZE];
     errbuf[0] = 0;
     curl_easy_setopt(c, CURLOPT_URL, url);
+    struct curl_slist *headers = NULL;
+    /* GitHub asset IDs identify a particular uploaded file; the API needs
+       this header to return its bytes instead of JSON metadata. */
+    if (pm_starts_with(url, "https://api.github.com/repos/") && strstr(url, "/releases/assets/")) {
+        headers = curl_slist_append(NULL, "Accept: application/octet-stream");
+        if (!headers) { curl_easy_cleanup(c); snprintf(err, errlen, "Out of memory"); return -1; }
+        curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
+    }
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 8L);
     curl_easy_setopt(c, CURLOPT_USERAGENT, "PluginManager/" PM_VERSION " (PSP; ARK-5)");
@@ -586,6 +594,7 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     if (tls_verify) {
         if (load_ca() < 0) {
             curl_easy_cleanup(c);
+            curl_slist_free_all(headers);
             snprintf(err, errlen, "Can't load the certificate bundle (cacert.pem)");
             return -1;
         }
@@ -617,6 +626,7 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         tlsdiag_set_host(&x->tls, failed_url);
     }
     curl_easy_cleanup(c);
+    curl_slist_free_all(headers);
 
     if (res == CURLE_OK) return 0;
 

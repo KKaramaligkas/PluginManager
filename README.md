@@ -224,7 +224,7 @@ required; filesystem or storage corruption can prevent automatic recovery.
 
 | `type` | Fields |
 | --- | --- |
-| `download` | `url`; `file`: name for the download (default: end of the URL); `sha256`: recommended, and required for `http://` URLs |
+| `download` | `url`; `file`: name for the download (default: end of the URL); `sha256`: recommended, and required for `http://` URLs; alternatively `sha256Url` and `checksumFile`: HTTPS release SHA256SUMS file and the asset name in it |
 | `extract` | `file` (default: the last download); `output`: destination folder; `input`: folder inside the archive to take files from; `include` / `exclude`: patterns; `flatten`: drop the archive's folders; `keep`: patterns of files that are not overwritten if they already exist (user settings) |
 | `copy` | `file`; `to`: a folder ending with `/` or a file path |
 | `mkdir` | `path` |
@@ -311,6 +311,19 @@ Packages whose author publishes no usable download are built from source into
 `store/packages/` and served from this repository. For now that's
 UmdImageCreator: `tools/build_umdimagecreator.sh` builds it from the author's
 tag, with the source unchanged.
+
+Official entries use fixed release URLs, commit URLs, or GitHub asset IDs and
+verify checksums. The NZPortable entry is a named nightly snapshot; a later
+nightly is a separate store update. `tools/check_store_downloads.py` rejects
+moving or unchecked downloads in CI.
+
+For a new ARK release, change `Updater/version.h` and, when applicable,
+`src/version.h`, then run `python3 tools/release_store.py --seed` from the repo
+root and commit the refreshed seed with its revision bump. The seed references
+that exact release's `SHA256SUMS`, avoiding the impossible cycle of embedding an
+archive's own hash inside it. The build also prepares this seed before packaging.
+After packaging, CI publishes `store.json` with the actual archive hashes along
+with `SHA256SUMS`; users can select that release store as their store URL.
 
 ## Building
 

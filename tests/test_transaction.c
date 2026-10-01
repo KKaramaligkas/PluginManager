@@ -131,9 +131,15 @@ static void test_restart(void)
     CHECK_INT(txn_recover(&ctx, err, sizeof(err)), 0);
 }
 
+static int bad_checksum;
 static int download(install_ctx *ctx, const char *url, const char *dest, char *err, int errlen)
 {
     (void)ctx; (void)url; (void)err; (void)errlen;
+    if (strstr(url, "SHA256SUMS")) {
+        const char *text = bad_checksum ? "not a checksum\n" :
+            "b7a8a844a613be796bc1892dc480f9d92c50d32a5713a87758e5c5addc4ec814  dist/test\n";
+        return fs_write_all(dest, text, (int)strlen(text));
+    }
     return fs_write_all(dest, "downloaded", 10);
 }
 
@@ -142,10 +148,11 @@ static int install(install_ctx *ctx, db_t *db, const char *version, int fail, ch
     char json[2000];
     snprintf(json, sizeof(json),
         "{\"entries\":[{\"id\":\"test\",\"title\":\"Test\",\"version\":\"%s\",\"install\":["
-        "{\"type\":\"download\",\"url\":\"https://example.org/test\",\"file\":\"test\"},"
+        "{\"type\":\"download\",\"url\":\"https://example.org/test\",\"file\":\"test\"%s},"
         "{\"type\":\"copy\",\"to\":\"%%SEPLUGINS%%test.prx\"},"
         "{\"type\":\"plugin\",\"path\":\"%%SEPLUGINS%%test.prx\",\"runlevel\":\"vsh\"}%s]}]}",
-        version, fail ? ",{\"type\":\"run\",\"path\":\"%GAME%Missing/EBOOT.PBP\"}" : "");
+        version, fail == 2 ? ",\"sha256Url\":\"https://example.org/SHA256SUMS\",\"checksumFile\":\"test\"" : "",
+        fail == 1 ? ",{\"type\":\"run\",\"path\":\"%GAME%Missing/EBOOT.PBP\"}" : "");
     store_t st;
     int ret = store_parse(&st, json, NULL, err, 256);
     if (ret == 0) ret = installer_install(ctx, &st.entries[0], db, err, 256);
@@ -170,6 +177,12 @@ static void test_installer(void)
     db_free(&saved);
     CHECK_INT(install(&ctx, &db, "2.0", 0, err), 0);
     expect(file, "downloaded"); CHECK_STR(db_find(&db, "test")->version, "2.0");
+    bad_checksum = 1;
+    CHECK_INT(install(&ctx, &db, "3.0", 2, err), -1);
+    CHECK_STR(db_find(&db, "test")->version, "2.0"); expect(file, "downloaded");
+    bad_checksum = 0;
+    CHECK_INT(install(&ctx, &db, "3.0", 2, err), 0);
+    CHECK_STR(db_find(&db, "test")->version, "3.0");
     CHECK_INT(installer_uninstall(&ctx, &db, "test", err, sizeof(err)), 0);
     CHECK(!fs_exists(file)); CHECK(db_find(&db, "test") == NULL);
     expect(config, "# preserve this\n");

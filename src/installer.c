@@ -280,11 +280,48 @@ static int temp_name(run_state *rs, const cJSON *step, const char *url, char *ou
     return pm_path_join(out, size, rs->ctx->temp_dir, file);
 }
 
+static int checksum_from_release(run_state *rs, const cJSON *step, char *hex)
+{
+    const char *url = get_str(step, "sha256Url");
+    const char *name = get_str(step, "checksumFile");
+    if (!url || !pm_starts_with(url, "https://") || !name || !*name ||
+        strcmp(name, pm_basename(name))) return fail(rs, "Invalid checksum manifest", NULL);
+    char path[PM_PATH_MAX];
+    if (snprintf(path, sizeof(path), "%s.pm-checksums-%d", rs->ctx->temp_dir, rs->n_temp) >= (int)sizeof(path))
+        return fail(rs, "Checksum manifest path is too long", NULL);
+    if (db_list_add(&rs->temp_files, &rs->n_temp, path) < 0)
+        return fail(rs, "Out of memory", NULL);
+    if (!rs->ctx->download || rs->ctx->download(rs->ctx, url, path, rs->err, rs->errlen) < 0)
+        return fail(rs, "Can't download release checksums", NULL);
+    char *text = fs_read_all(path, NULL, 64 * 1024);
+    if (!text) return fail(rs, "Can't read release checksums", NULL);
+    int found = 0;
+    for (char *line = text; line && *line;) {
+        char *next = strchr(line, '\n');
+        if (next) *next++ = 0;
+        char *value = pm_trim(line);
+        if (strlen(value) > 66 && (value[64] == ' ' || value[64] == '\t')) {
+            char *file = pm_trim(value + 64);
+            if (*file == '*') file++;
+            if (!strcmp(pm_basename(file), name)) {
+                int valid = 1;
+                for (int i = 0; i < 64; i++) if (!isxdigit((unsigned char)value[i])) valid = 0;
+                if (!valid || found) { found = -1; break; }
+                memcpy(hex, value, 64); hex[64] = 0; found = 1;
+            }
+        }
+        line = next;
+    }
+    free(text);
+    return found == 1 ? 0 : fail(rs, "Missing or invalid checksum for %s", name);
+}
+
 static int step_download(run_state *rs, const cJSON *step)
 {
     install_ctx *ctx = rs->ctx;
     const char *url = get_str(step, "url");
     const char *sha = get_str(step, "sha256");
+    char release_sha[65];
     if (!url || !(pm_starts_with(url, "https://") || pm_starts_with(url, "http://")))
         return fail(rs, "Invalid download URL", NULL);
     /* the store comes over https: its checksum is what vouches for a plain http download */
@@ -295,6 +332,10 @@ static int step_download(run_state *rs, const cJSON *step)
     if (temp_name(rs, step, url, dest, sizeof(dest)) < 0) return fail(rs, "Invalid download file name", NULL);
 
     fs_mkdirs(ctx->temp_dir, NULL, NULL);
+    if (!sha && get_str(step, "sha256Url")) {
+        if (checksum_from_release(rs, step, release_sha) < 0) return -1;
+        sha = release_sha;
+    }
     db_list_add(&rs->temp_files, &rs->n_temp, dest);
     pm_strlcpy(rs->last_download, dest, sizeof(rs->last_download));
 
