@@ -338,6 +338,17 @@ and on the PSP the socket functions would call the wrong system functions.
 
 ## Testing
 
+Pull requests run the sanitized host tests before building release packages.
+Publishing also depends on those tests. SDK archives, SDK source revisions,
+Vita library archives, and build actions are pinned; `tools/toolchains.json`
+records the SDK inputs and their SHA-256 checksums. A changed upstream asset
+fails verification rather than silently changing the build.
+
+PSP libraries installed by `psp-pacman` still come from its current repository;
+`psp-packages.txt` in each release records their exact installed versions.
+`toolchains.json`, compiler versions, the source commit, and `SHA256SUMS` are
+published with the release to make its build inputs and outputs inspectable.
+
 - `make -C PluginManager/tests check`: unit tests (store parsing, paths,
   `PLUGINS.TXT` editing, database, installer rules, cancellation, failed writes
   and recovery after an interrupted commit), built with
