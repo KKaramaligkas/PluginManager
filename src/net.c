@@ -39,6 +39,7 @@
 #include "fs.h"
 #include "gfx.h"
 #include "net.h"
+#include "resume.h"
 #include "tlsdiag.h"
 #include "util.h"
 #include "version.h"
@@ -503,12 +504,14 @@ typedef struct {
     net_progress_fn cb;
     void *ud;
     tlsdiag tls;            /* the certificate check of the last connection */
+    resume_state *download;
 } xfer;
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     xfer *x = userdata;
     size_t n = size * nmemb;
+    if (x->download) return resume_write(x->download, ptr, n);
     if (x->f >= 0) {
         if (fs_write(x->f, ptr, (int)n) != (int)n) {
             x->write_error = 1;
@@ -542,7 +545,10 @@ static int xferinfo_cb(void *p, curl_off_t dltotal, curl_off_t dlnow, curl_off_t
     (void)ultotal;
     (void)ulnow;
     xfer *x = p;
-    return x->cb ? x->cb(x->ud, (int64_t)dlnow, dltotal > 0 ? (int64_t)dltotal : -1) : 0;
+    int64_t offset = x->download ? x->download->offset : 0;
+    int64_t done = dlnow > INT64_MAX - offset ? INT64_MAX : (int64_t)dlnow + offset;
+    int64_t total = dltotal > 0 && dltotal <= INT64_MAX - offset ? (int64_t)dltotal + offset : -1;
+    return x->cb ? x->cb(x->ud, done, total) : 0;
 }
 
 static int perform(const char *url, xfer *x, char *err, int errlen)
@@ -571,8 +577,23 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     if (pm_starts_with(url, "https://api.github.com/repos/") && strstr(url, "/releases/assets/")) {
         headers = curl_slist_append(NULL, "Accept: application/octet-stream");
         if (!headers) { curl_easy_cleanup(c); snprintf(err, errlen, "Out of memory"); return -1; }
-        curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
     }
+    if (x->download) {
+        curl_easy_setopt(c, CURLOPT_HEADERFUNCTION, resume_header);
+        curl_easy_setopt(c, CURLOPT_HEADERDATA, x->download);
+        if (x->download->offset) {
+            char range_validator[192];
+            snprintf(range_validator, sizeof(range_validator), "If-Range: %s", x->download->validator);
+            struct curl_slist *next = curl_slist_append(headers, range_validator);
+            if (!next) {
+                curl_slist_free_all(headers); curl_easy_cleanup(c);
+                snprintf(err, errlen, "Out of memory"); return -1;
+            }
+            headers = next;
+            curl_easy_setopt(c, CURLOPT_RESUME_FROM_LARGE, (curl_off_t)x->download->offset);
+        }
+    }
+    if (headers) curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 8L);
     curl_easy_setopt(c, CURLOPT_USERAGENT, "PluginManager/" PM_VERSION " (PSP; ARK-5)");
@@ -581,7 +602,7 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 16L);
     curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 45L);
     curl_easy_setopt(c, CURLOPT_IPRESOLVE, (long)CURL_IPRESOLVE_V4);
-    curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "");
+    curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, x->download ? "identity" : "");
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(c, CURLOPT_BUFFERSIZE, 64L * 1024);
     curl_easy_setopt(c, CURLOPT_ERRORBUFFER, errbuf);
@@ -628,6 +649,11 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     curl_easy_cleanup(c);
     curl_slist_free_all(headers);
 
+    if (x->download && x->download->space_error) {
+        snprintf(err, errlen, "Not enough free space for this download");
+        return -1;
+    }
+
     if (res == CURLE_OK) return 0;
 
     switch (res) {
@@ -669,19 +695,26 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
 
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen)
 {
-    xfer x;
-    memset(&x, 0, sizeof(x));
-    x.cb = cb;
-    x.ud = ud;
-    x.f = fs_open(dest_path, FS_WRITE);
-    if (x.f < 0) {
-        snprintf(err, errlen, "Can't create %s", dest_path);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        resume_state state;
+        if (resume_open(&state, url, dest_path) < 0) {
+            snprintf(err, errlen, "Can't create %s", dest_path);
+            return -1;
+        }
+        xfer x;
+        memset(&x, 0, sizeof(x));
+        x.f = -1; x.cb = cb; x.ud = ud; x.download = &state;
+        int result = perform(url, &x, err, errlen);
+        int closed = resume_close(&state, result == 0);
+        if (result == 0 && closed == 0) return 0;
+        if (state.retry_fresh && attempt == 0) {
+            resume_discard(&state); /* Server changed the file or refused Range. */
+            continue;
+        }
+        if (result == 0) snprintf(err, errlen, "Could not finish the download; retry to resume");
         return -1;
     }
-    int r = perform(url, &x, err, errlen);
-    fs_close(x.f);
-    if (r < 0) fs_remove(dest_path);
-    return r;
+    return -1;
 }
 
 char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, void *ud, char *err, int errlen)

@@ -98,6 +98,7 @@ static int add(transaction *tx, const char *path, int kind)
     if (!entries[i].path) return -1;
     entries[i].kind = kind;
     entries[i].existed = existed;
+    entries[i].size = 0;
     if (existed && kind != TX_DIR) {
         char backup[PM_PATH_MAX];
         if (tx_path(tx, i, "undo", backup, sizeof(backup)) < 0 ||
@@ -127,14 +128,51 @@ int txn_mkdirs(transaction *tx, const char *path)
     return add(tx, dir, TX_DIR) >= 0 ? 0 : -1;
 }
 
-int txn_stage(transaction *tx, const char *path, char *out, int size)
+int txn_stage_sized(transaction *tx, const char *path, int64_t bytes, char *out, int size)
 {
-    if (!allowed(tx, path)) return -1;
+    if (!allowed(tx, path) || bytes < 0) return -1;
+    int previous = find(tx, path);
+    int64_t old_size = fs_size(path);
+    if (old_size < 0) old_size = 0;
+    int64_t backup = previous < 0 ? old_size : 0;
+    int64_t pending_temp = 0, pending_target = 0;
+    for (int i = 0; i < tx->count; i++) {
+        txn_entry *entry = &tx->entries[i];
+        if (entry->kind != TX_FILE || i == previous) continue;
+        int64_t original = fs_size(entry->path);
+        if (original < 0) original = 0;
+        int64_t growth = entry->size > original ? entry->size - original : 0;
+        if (!strncmp(entry->path, tx->dir, 4)) {
+            if (growth > INT64_MAX - pending_temp) return -1;
+            pending_temp += growth;
+        }
+        if (!strncmp(entry->path, path, 4)) {
+            if (growth > INT64_MAX - pending_target) return -1;
+            pending_target += growth;
+        }
+    }
+    int64_t growth = bytes > old_size ? bytes - old_size : 0;
+    if (growth > INT64_MAX - pending_temp || growth > INT64_MAX - pending_target) return -1;
+    if (!strncmp(path, tx->dir, 4)) pending_temp += growth;
+    pending_target += growth;
+    int64_t temp_free = fs_free_bytes(tx->dir), target_free = fs_free_bytes(path);
+    const int64_t margin = 256 * 1024;
+    if (bytes > INT64_MAX - backup - margin || pending_temp > INT64_MAX - bytes - backup - margin ||
+        pending_target > INT64_MAX - margin ||
+        (temp_free >= 0 && temp_free < bytes + backup + pending_temp + margin) ||
+        (target_free >= 0 && target_free < pending_target + margin)) return -1;
     char parent[PM_PATH_MAX];
     pm_dirname(path, parent, sizeof(parent));
     if (txn_mkdirs(tx, parent) < 0) return -1;
     int i = add(tx, path, TX_FILE);
+    if (i >= 0) tx->entries[i].size = bytes;
     return i >= 0 ? tx_path(tx, i, "stage", out, size) : -1;
+}
+
+int txn_stage(transaction *tx, const char *path, char *out, int size)
+{
+    int64_t bytes = fs_size(path);
+    return txn_stage_sized(tx, path, bytes > 0 ? bytes : 0, out, size);
 }
 
 int txn_delete(transaction *tx, const char *path)

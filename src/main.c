@@ -633,6 +633,13 @@ static void build_details(void)
     if (it->entry) {
         snprintf(ui.local_desc, sizeof(ui.local_desc), "%s%s%s", it->entry->description,
                  it->entry->notes ? "\n\nNote: " : "", it->entry->notes ? it->entry->notes : "");
+        char free_text[24], storage[192];
+        int64_t free_bytes = fs_free_bytes(app.cfg.root);
+        if (free_bytes >= 0) pm_format_size(free_bytes, free_text, sizeof(free_text));
+        else pm_strlcpy(free_text, "Unknown", sizeof(free_text));
+        snprintf(storage, sizeof(storage), "\n\nFree on %s: %s. Extra space is needed to unpack and keep a recovery copy.",
+                 pm_starts_with(app.cfg.root, "ef0:") ? "internal storage" : "memory stick", free_text);
+        pm_strlcat(ui.local_desc, storage, sizeof(ui.local_desc));
         text = ui.local_desc;
     }
     else if (it->status == ST_LOCAL) {

@@ -202,10 +202,29 @@ static void test_protected_paths(void)
     txn_free(&tx);
 }
 
+static void test_space(void)
+{
+    install_ctx ctx = context();
+    transaction tx;
+    char err[256] = "", out[PM_PATH_MAX];
+    put(file, "old");
+    CHECK_INT(txn_begin(&tx, &ctx, err, sizeof(err)), 0);
+    fs_test_free_bytes(500 * 1024, -2);
+    /* Space must include staging, backup, and growth while retaining staging. */
+    CHECK_INT(txn_stage_sized(&tx, file, 256 * 1024, out, sizeof(out)), -1);
+    fs_test_free_bytes(10 * 1024 * 1024, 300 * 1024);
+    CHECK_INT(txn_stage_sized(&tx, new_file, 128 * 1024, out, sizeof(out)), -1);
+    fs_test_free_bytes(-1, -1); /* a driver that cannot report free space */
+    CHECK_INT(txn_stage_sized(&tx, file, 3, out, sizeof(out)), 0);
+    fs_test_free_bytes(-2, -2);
+    CHECK_INT(txn_rollback(&tx, err, sizeof(err)), 0); txn_free(&tx);
+    expect(file, "old");
+}
+
 int main(void)
 {
     if (!getenv("PM_FS_ROOT")) return 2;
-    test_commit_and_abort(); test_commit_failures(); test_restart(); test_installer(); test_protected_paths();
+    test_commit_and_abort(); test_commit_failures(); test_restart(); test_installer(); test_protected_paths(); test_space();
     printf("test_transaction: %d checks, %d failures\n", test_checks, test_failures);
     return test_failures ? 1 : 0;
 }

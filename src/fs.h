@@ -27,6 +27,7 @@ void fs_close(fs_file f);
 int fs_exists(const char *path);        /* file or directory */
 int fs_is_dir(const char *path);
 int64_t fs_size(const char *path);      /* -1 when missing */
+int64_t fs_free_bytes(const char *path); /* -1 when the device cannot report it */
 int fs_mkdir(const char *path);         /* single level, 0 or already exists */
 int fs_remove(const char *path);
 int fs_rmdir(const char *path);
@@ -35,6 +36,7 @@ int fs_sync(const char *path); /* flush file/directory changes before journallin
 #ifdef PM_FS_TESTING
 /* One-shot failure after n successful writes; host tests only. */
 void fs_test_fail_after_writes(int n);
+void fs_test_free_bytes(int64_t ms0, int64_t ef0); /* -2 restores real values */
 #endif
 
 /* Creates every missing directory of `path` (a directory path, trailing '/'

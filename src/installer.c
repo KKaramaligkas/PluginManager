@@ -407,8 +407,8 @@ static int extract_select(void *ud, const char *relpath, int64_t size, char *des
 
     pm_strlcpy(rs->extract_dest, dest, sizeof(rs->extract_dest));
     char staged[PM_PATH_MAX];
-    if (txn_stage(&rs->tx, dest, staged, sizeof(staged)) < 0)
-        return fail(rs, "Can't stage %s", dest);
+    if (txn_stage_sized(&rs->tx, dest, size, staged, sizeof(staged)) < 0)
+        return fail(rs, "Can't stage %s (not enough free space or storage unavailable)", dest);
     pm_strlcpy(dest, staged, destlen);
     return 1;
 }
@@ -486,8 +486,8 @@ static int step_copy(run_state *rs, const cJSON *step)
     if (to[tl - 1] == '/') pm_strlcat(dest, pm_basename(src), sizeof(dest));
 
     char staged[PM_PATH_MAX];
-    if (txn_stage(&rs->tx, dest, staged, sizeof(staged)) < 0)
-        return fail(rs, "Can't stage %s", dest);
+    if (txn_stage_sized(&rs->tx, dest, fs_size(src), staged, sizeof(staged)) < 0)
+        return fail(rs, "Can't stage %s (not enough free space or storage unavailable)", dest);
     if (rs->ctx->progress) rs->ctx->progress(rs->ctx, "Copying files", 0, -1);
     if (fs_copy(src, staged) < 0) return fail(rs, "Can't write %s", dest);
     db_list_add(&rs->rec->files, &rs->rec->n_files, dest);

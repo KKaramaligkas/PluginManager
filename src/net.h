@@ -54,6 +54,8 @@ void net_set_tls(const char *ca_file, int verify);
 /* Where the details of a failed certificate check are written. */
 void net_set_report_file(const char *path);
 
+/* Keeps a validated .part download after interruption; resumes using If-Range.
+   A refused or changed range is retried from the start. */
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen);
 /* Downloads into memory (NUL terminated). */
 char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, void *ud, char *err, int errlen);

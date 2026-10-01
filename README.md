@@ -222,6 +222,19 @@ Plugin Manager's file installation, not the firmware writes performed later by
 the separate ARK Updater. Real-device power interruption testing is still
 required; filesystem or storage corruption can prevent automatic recovery.
 
+The details page shows free space on the installation device. Downloads check
+the server's reported remaining size before writing; extraction and copying
+check space for the replacement, the backup, and pending destination growth,
+including installations to a different PSP Go device. Unknown free-space values
+are shown as unknown; failed writes still trigger rollback.
+
+Interrupted downloads keep `*.part` and `*.part.json` in the scratch folder.
+Retrying the same package resumes when the server supplies a strong ETag or
+Last-Modified validator and returns the matching byte range. Changed files,
+ignored ranges, or invalid metadata restart the download. Package checksums
+are verified after completion. Downloads without a usable validator restart
+from the beginning. These partial files can be removed to reclaim space.
+
 | `type` | Fields |
 | --- | --- |
 | `download` | `url`; `file`: name for the download (default: end of the URL); `sha256`: recommended, and required for `http://` URLs; alternatively `sha256Url` and `checksumFile`: HTTPS release SHA256SUMS file and the asset name in it |

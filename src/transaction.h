@@ -8,6 +8,7 @@ typedef struct {
     char *path;
     int kind;                  /* replacement, deletion, or new directory */
     int existed;
+    int64_t size;              /* planned replacement size, used for space checks */
 } txn_entry;
 
 typedef struct {
@@ -22,6 +23,7 @@ typedef struct {
 
 int txn_begin(transaction *tx, install_ctx *ctx, char *err, int errlen);
 int txn_stage(transaction *tx, const char *path, char *out, int size);
+int txn_stage_sized(transaction *tx, const char *path, int64_t bytes, char *out, int size);
 int txn_delete(transaction *tx, const char *path);
 int txn_mkdirs(transaction *tx, const char *path);
 const char *txn_read_path(const transaction *tx, const char *path, char *out, int size);
