@@ -10,6 +10,9 @@
 
 #include <cjson/cJSON.h>
 #include <kubridge.h>
+#include <pspkernel.h>
+#include <systemctrl.h>
+#include <systemctrl_ark.h>
 
 #include "app.h"
 #include "fs.h"
@@ -33,6 +36,13 @@ const char *app_model_name(int model)
 
 static int detect_model(void)
 {
+    ARKConfig config = {0};
+    struct KernelCallArg args = {0};
+    args.arg1 = (unsigned int)&config;
+    void *get = (void *)sctrlHENFindFunction("SystemControl", "ArkCtrl", 0xB00B1E55);
+    if (!get) get = (void *)sctrlHENFindFunction("SystemControl", "SystemCtrlForKernel", 0xB00B1E55);
+    if (get) kuKernelCall(get, &args);
+    if (IS_ARK_CONFIG(&config) && IS_VITA(&config)) return MODEL_VITA;
     int m = kuKernelGetModel();
     switch (m) {
     case 0: return MODEL_1000;
@@ -419,6 +429,8 @@ void app_fill_install_ctx(install_ctx *ctx)
     pm_strlcpy(ctx->protect_dir, app.data_dir, sizeof(ctx->protect_dir));
     pm_strlcpy(ctx->db_file, app.db_file, sizeof(ctx->db_file));
     ctx->model = app.model;
+    unsigned int fw = sceKernelDevkitVersion();
+    snprintf(ctx->firmware, sizeof(ctx->firmware), "%u.%u%u", (fw >> 24) & 15, (fw >> 16) & 15, (fw >> 8) & 15);
     ctx->store_url = app.cfg.store_url;
 }
 

@@ -61,7 +61,7 @@ PSP_HEAP_THRESHOLD_SIZE_KB(4 * 1024);
 #define MAX_TEXTURES 28
 
 enum { SCR_GRID, SCR_DETAILS, SCR_SETTINGS };
-enum { MODAL_NONE, MODAL_MESSAGE, MODAL_CONFIRM, MODAL_PROGRESS, MODAL_MENU };
+enum { MODAL_NONE, MODAL_MESSAGE, MODAL_CONFIRM, MODAL_PROGRESS, MODAL_MENU, MODAL_REVIEW };
 enum { F_ALL, F_PLUGINS, F_APPS, F_EMUS, F_GAMES, F_INSTALLED, F_UPDATES, F_COUNT };
 enum { SORT_NAME, SORT_CATEGORY, SORT_UPDATED, SORT_COUNT };
 enum {
@@ -108,7 +108,8 @@ static struct {
     int line_len[96];
     int n_lines;
     float desc_scroll;
-    char local_desc[768];
+    char local_desc[2048];
+    int review_index;
 
     /* settings */
     int set_sel;
@@ -640,6 +641,28 @@ static void build_details(void)
         snprintf(storage, sizeof(storage), "\n\nFree on %s: %s. Extra space is needed to unpack and keep a recovery copy.",
                  pm_starts_with(app.cfg.root, "ef0:") ? "internal storage" : "memory stick", free_text);
         pm_strlcat(ui.local_desc, storage, sizeof(ui.local_desc));
+        const cJSON *lists[] = {
+            cJSON_GetObjectItemCaseSensitive(it->entry->compatibility, "models"),
+            cJSON_GetObjectItemCaseSensitive(it->entry->compatibility, "firmware"),
+            it->entry->requires, it->entry->conflicts};
+        const char *labels[] = {"Supported models: ", "PSP system software: ", "Requires: ", "Conflicts with: "};
+        for (int i = 0; i < 4; i++) {
+            if (!cJSON_IsArray(lists[i]) || !cJSON_GetArraySize(lists[i])) continue;
+            pm_strlcat(ui.local_desc, "\n\n", sizeof(ui.local_desc));
+            pm_strlcat(ui.local_desc, labels[i], sizeof(ui.local_desc));
+            const cJSON *value; int first = 1;
+            cJSON_ArrayForEach(value, lists[i]) {
+                if (!cJSON_IsString(value)) continue;
+                if (!first) pm_strlcat(ui.local_desc, ", ", sizeof(ui.local_desc));
+                pm_strlcat(ui.local_desc, value->valuestring, sizeof(ui.local_desc)); first = 0;
+            }
+        }
+        install_ctx ctx; char issue[256];
+        app_fill_install_ctx(&ctx);
+        if (installer_compatible(&ctx, it->entry, &app.db, issue, sizeof(issue)) < 0) {
+            pm_strlcat(ui.local_desc, "\n\nCannot install: ", sizeof(ui.local_desc));
+            pm_strlcat(ui.local_desc, issue, sizeof(ui.local_desc));
+        }
         text = ui.local_desc;
     }
     else if (it->status == ST_LOCAL) {
@@ -876,6 +899,23 @@ static void draw_modal(void)
             text_draw(bx + w / 2, by + 3, labels[i], 0.6f, sel ? RGB(255, 255, 255) : C_DIM, TEXT_CENTER | TEXT_BOLD);
             bx -= 8;
         }
+        break;
+    }
+    case MODAL_REVIEW: {
+        ui_modal(360, 215, "Review file changes", &cx, &cy, &cw);
+        const char *line = strchr(job.review_text, '\n');
+        if (line) line++; else line = "";
+        for (int i = 0; i < ui.review_index && *line; i++) {
+            const char *next = strchr(line, '\n'); line = next ? next + 1 : "";
+        }
+        char entry[512], count[96];
+        const char *end = strchr(line, '\n');
+        snprintf(entry, sizeof(entry), "%.*s", (int)(end ? end - line : strlen(line)), line);
+        snprintf(count, sizeof(count), "File %d of %d. Up/Down: browse", ui.review_index + 1, job.review_count);
+        text_draw(cx, cy, count, 0.58f, C_DIM, 0);
+        int n = text_wrap(entry, 0.58f, 330, 0, starts, lens, 10);
+        for (int i = 0; i < n; i++) text_draw_n(cx, cy + 25 + i * 13, starts[i], lens[i], 0.58f, C_DIM, 0);
+        text_draw(cx, cy + 156, "Confirm: apply all changes   Cancel: keep files", 0.52f, C_DIM, 0);
         break;
     }
     case MODAL_PROGRESS: {
@@ -1150,6 +1190,9 @@ static void refresh_store(void)
 static void install_item(item_t *it)
 {
     if (!it || !it->entry) return;
+    install_ctx ctx; char err[256];
+    app_fill_install_ctx(&ctx);
+    if (installer_compatible(&ctx, it->entry, &app.db, err, sizeof(err)) < 0) { message("Cannot install", err); return; }
     if (!ensure_online()) return;
     start_job(JOB_INSTALL, it->id, it->title);
 }
@@ -1172,7 +1215,7 @@ static void run_queue(void)
 static void on_job_finished(void)
 {
     char buf[900];
-    if (ui.modal == MODAL_PROGRESS) ui.modal = MODAL_NONE;
+    if (ui.modal == MODAL_PROGRESS || ui.modal == MODAL_REVIEW) ui.modal = MODAL_NONE;
 
     switch (job.type) {
     case JOB_REFRESH:
@@ -1593,6 +1636,15 @@ static void handle_modal(const input_state *in)
             if (ui.modal_sel == 0 && ui.on_yes) ui.on_yes();
         }
         break;
+    case MODAL_REVIEW:
+        if (in->repeat & PSP_CTRL_DOWN && ui.review_index < job.review_count - 1) ui.review_index++;
+        if (in->repeat & PSP_CTRL_UP && ui.review_index > 0) ui.review_index--;
+        if (in->pressed & (BTN_CONFIRM | BTN_CANCEL)) {
+            ui.modal = MODAL_PROGRESS;
+            if (in->pressed & BTN_CANCEL) worker_cancel();
+            job.review_answer = (in->pressed & BTN_CANCEL) ? -1 : 1;
+        }
+        break;
     case MODAL_PROGRESS:
         if (in->pressed & BTN_CANCEL) worker_cancel();
         break;
@@ -1698,6 +1750,9 @@ int main(int argc, char *argv[])
     while (!exit_requested) {
         input_update(&in);
         if (worker_collect()) on_job_finished();
+        if (job.needs_review && !job.review_answer && ui.modal != MODAL_REVIEW) {
+            ui.review_index = 0; ui.modal = MODAL_REVIEW;
+        }
 
         if (ui.modal != MODAL_NONE) handle_modal(&in);
         else if (ui.screen == SCR_GRID) handle_grid(&in);

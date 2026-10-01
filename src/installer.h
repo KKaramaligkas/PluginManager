@@ -29,6 +29,7 @@ struct install_ctx {
     char temp_dir[160];         /* scratch folder for downloads */
     char protect_dir[160];      /* packages may never write here (our own data) */
     char db_file[256];          /* included in the transaction; empty for in-memory callers */
+    char firmware[16];          /* emulated PSP system software, e.g. 6.61 */
     int model;                  /* MODEL_* */
     const char *store_url;
 
@@ -38,6 +39,8 @@ struct install_ctx {
     void (*progress)(install_ctx *ctx, const char *stage, int64_t done, int64_t total);
     /* Returns non-zero when the user asked to cancel. */
     int (*cancelled)(install_ctx *ctx);
+    /* Review newline-separated replacements before applying; return 1 to proceed. */
+    int (*review)(install_ctx *ctx, const char *text, int count);
     void *ud;
 
     /* Messages collected from "message" steps, shown after installing. */
@@ -48,8 +51,11 @@ struct install_ctx {
     char run_title[64];
 };
 
-/* Installs (or updates) `e`. The package record is stored into `db`
-   (the caller saves the db). Returns 0 on success. */
+/* Return 0 when constraints permit installation, otherwise describe the blocker. */
+int installer_compatible(const install_ctx *ctx, const store_entry *e, const db_t *db, char *err, int errlen);
+
+/* Installs (or updates) `e`. Commits files and ctx->db_file together, then
+   updates the in-memory `db`. Returns 0 on success. */
 int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *err, int errlen);
 
 /* Removes every file/folder/PLUGINS.TXT line recorded for package `id`. */

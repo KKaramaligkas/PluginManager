@@ -185,6 +185,9 @@ int store_parse(store_t *st, const char *json, const char *source_url, char *err
         se->updated = get_str(e, "updated");
         se->runlevel = get_str(e, "runlevel");
         se->notes = get_str(e, "notes");
+        se->compatibility = cJSON_GetObjectItemCaseSensitive(e, "compatibility");
+        se->requires = cJSON_GetObjectItemCaseSensitive(e, "requires");
+        se->conflicts = cJSON_GetObjectItemCaseSensitive(e, "conflicts");
         se->version_file = get_str(e, "versionFile");
         const cJSON *step;
         cJSON_ArrayForEach(step, se->install) {
@@ -230,3 +233,4 @@ const store_entry *store_find(const store_t *st, const char *id)
     }
     return NULL;
 }
+

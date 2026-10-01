@@ -138,6 +138,18 @@ static void do_icons(void)
     job.result = 0;
 }
 
+static int ctx_review(install_ctx *ctx, const char *text, int count)
+{
+    (void)ctx;
+    job.review_text = pm_strdup(text);
+    if (!job.review_text) return 0;
+    job.review_count = count; job.review_answer = 0;
+    job.needs_review = 1;
+    while (!job.review_answer && !job.cancel && !quit) sceKernelDelayThread(10 * 1000);
+    job.needs_review = 0;
+    return !job.cancel && !quit ? job.review_answer : 0;
+}
+
 static void do_install(void)
 {
     const store_entry *e = store_find(&app.store, job.id);
@@ -150,6 +162,7 @@ static void do_install(void)
     install_ctx ctx;
     app_fill_install_ctx(&ctx);
     ctx.download = ctx_download;
+    ctx.review = ctx_review;
     ctx.progress = ctx_progress;
     ctx.cancelled = ctx_cancelled;
 
@@ -208,6 +221,7 @@ void worker_stop(void)
     sceKernelSignalSema(sema, 1);
     SceUInt timeout = 3 * 1000 * 1000;
     if (sceKernelWaitThreadEnd(thread, &timeout) < 0) sceKernelTerminateThread(thread);
+    free((void *)job.review_text); job.review_text = NULL;
     sceKernelDeleteThread(thread);
     sceKernelDeleteSema(sema);
     thread = -1;
@@ -223,6 +237,9 @@ int worker_submit(job_type type, const char *id, const char *title)
     if (worker_busy()) return -1;
     job.type = type;
     job.cancel = 0;
+    job.needs_review = job.review_answer = 0;
+    free((void *)job.review_text);
+    job.review_text = NULL;
     job.result = 0;
     job.cur = 0;
     job.total = -1;

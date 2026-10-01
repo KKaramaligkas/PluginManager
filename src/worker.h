@@ -32,6 +32,10 @@ typedef struct {
     volatile int64_t cur, total;
     unsigned int started;       /* sceKernelGetSystemTimeLow at start */
 
+    volatile int needs_review, review_answer;
+    const char *review_text;    /* retained until next job, so UI reads stay valid */
+    int review_count;
+
     char error[256];
     char messages[512];
     char run_path[256];         /* JOB_INSTALL: program to offer to start ("run" step) */
@@ -54,3 +58,4 @@ int worker_collect(void);
 void worker_cancel(void);
 
 #endif
+

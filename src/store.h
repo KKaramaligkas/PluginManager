@@ -38,6 +38,9 @@ typedef struct {
     const char *runlevel;       /* informational, for plugins */
     const char *notes;          /* shown before installing */
     const char *version_file;   /* installed version is read from this file (ARK itself), or NULL */
+    const cJSON *compatibility; /* models and firmware allowlists */
+    const cJSON *requires;      /* installed package IDs */
+    const cJSON *conflicts;     /* mutually exclusive package IDs */
     int runs;                   /* has a "run" step: installing ends by starting a program */
     store_category category;
     int64_t size;
@@ -72,3 +75,4 @@ const char *store_category_name(store_category c);
 store_category store_category_from_name(const char *name);
 
 #endif
+

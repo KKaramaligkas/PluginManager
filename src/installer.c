@@ -728,6 +728,101 @@ static int commit_db(transaction *tx, db_t *candidate, db_t *db, char *err, int 
     return 0;
 }
 
+static int allowed_strings(const cJSON *list, const char *value)
+{
+    if (!cJSON_IsArray(list) || !cJSON_GetArraySize(list)) return -1;
+    int found = 0;
+    const cJSON *item;
+    cJSON_ArrayForEach(item, list) {
+        if (!cJSON_IsString(item) || !item->valuestring[0]) return -1;
+        if (!pm_strcasecmp(value, item->valuestring)) found = 1;
+    }
+    return found;
+}
+
+int installer_compatible(const install_ctx *ctx, const store_entry *e, const db_t *db, char *err, int errlen)
+{
+    err[0] = 0;
+    if (e->compatibility) {
+        if (!cJSON_IsObject(e->compatibility)) goto invalid;
+        const cJSON *field;
+        cJSON_ArrayForEach(field, e->compatibility) {
+            if (!strcmp(field->string, "models")) {
+                const cJSON *model;
+                if (!cJSON_IsArray(field) || !cJSON_GetArraySize(field)) goto invalid;
+                cJSON_ArrayForEach(model, field) {
+                    int known = 0;
+                    if (!cJSON_IsString(model)) goto invalid;
+                    for (int i = 0; i < MODEL_UNKNOWN; i++) {
+                        install_ctx test = {0}; test.model = i;
+                        if (model_matches(&test, model)) known = 1;
+                    }
+                    if (!known) goto invalid;
+                }
+                if (!model_matches(ctx, field)) {
+                    snprintf(err, errlen, "This package does not support this console model."); return -1;
+                }
+            } else if (!strcmp(field->string, "firmware")) {
+                int match = allowed_strings(field, ctx->firmware);
+                if (match < 0) goto invalid;
+                if (!match) { snprintf(err, errlen, "Unsupported PSP system software: %s", ctx->firmware[0] ? ctx->firmware : "unknown"); return -1; }
+            } else goto invalid;
+        }
+    }
+    const cJSON *lists[] = {e->requires, e->conflicts};
+    for (int i = 0; i < 2; i++) {
+        if (!lists[i]) continue;
+        if (!cJSON_IsArray(lists[i])) goto invalid;
+        const cJSON *item;
+        cJSON_ArrayForEach(item, lists[i]) {
+            if (!cJSON_IsString(item) || !pm_valid_id(item->valuestring) || !strcmp(item->valuestring, e->id)) goto invalid;
+            int installed = 0;
+            for (int j = 0; j < db->count; j++) if (!strcmp(db->pkgs[j].id, item->valuestring)) installed = 1;
+            if ((!i && !installed) || (i && installed)) {
+                snprintf(err, errlen, i ? "Uninstall conflicting package '%s' first." : "Install required package '%s' first.", item->valuestring);
+                return -1;
+            }
+        }
+    }
+    return 0;
+invalid:
+    snprintf(err, errlen, "Invalid or unsupported compatibility requirements."); return -1;
+}
+
+static int review_changes(run_state *rs, const db_t *db, const char *id)
+{
+    if (!rs->ctx->review) return 0;
+    size_t cap = 192;
+    int count = 0;
+    for (int i = 0; i < rs->tx.count; i++) {
+        const txn_entry *entry = &rs->tx.entries[i];
+        if (entry->kind == 2 || !entry->existed) continue;
+        cap += strlen(entry->path) + 128; count++;
+    }
+    if (!count) return 0;
+    char *text = malloc(cap);
+    if (!text) return fail(rs, "Out of memory for install review", NULL);
+    int length = snprintf(text, cap, "%d existing file(s) will be changed. Up/Down: review each file.\n", count);
+    for (int i = 0; i < rs->tx.count; i++) {
+        const txn_entry *entry = &rs->tx.entries[i];
+        if (entry->kind == 2 || !entry->existed) continue;
+        const char *owner = "not tracked";
+        for (int j = 0; j < db->count; j++) {
+            if (db_list_has(db->pkgs[j].files, db->pkgs[j].n_files, entry->path)) {
+                owner = db->pkgs[j].id;
+                if (strcmp(owner, id)) break;
+            }
+        }
+        length += snprintf(text + length, cap - length, "%s %s (owner: %.64s)\n",
+                           entry->kind == 1 ? "Remove" : "Replace", entry->path, owner);
+    }
+    int accepted = rs->ctx->review(rs->ctx, text, count);
+    free(text);
+    if (accepted != 1 || (rs->ctx->cancelled && rs->ctx->cancelled(rs->ctx)))
+        return fail(rs, "Cancelled", NULL);
+    return 0;
+}
+
 int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *err, int errlen)
 {
     run_state rs;
@@ -737,6 +832,7 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     rs.errlen = errlen;
     err[0] = 0;
     ctx->messages[0] = ctx->run_path[0] = ctx->run_title[0] = 0;
+    if (installer_compatible(ctx, e, db, err, errlen) < 0) return -1;
     if (txn_begin(&rs.tx, ctx, err, errlen) < 0) return -1;
 
     db_t candidate = {0};
@@ -809,6 +905,9 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
         for (int i = 0; i < rs.tx.count; i++)
             if (rs.tx.entries[i].kind == 2 && !rs.tx.entries[i].existed &&
                 db_list_add(&rec->dirs, &rec->n_dirs, rs.tx.entries[i].path) < 0) ret = -1;
+    }
+    if (ret == 0) {
+        ret = review_changes(&rs, db, e->id);
     }
     if (ret == 0) {
         take_ownership(&candidate, rec);

@@ -30,8 +30,8 @@ FasterARK and is listed in three places:
 
 ARK itself is in the store as **ARK-5**, from ARK 5.1.6. The app compares the
 store's version with `VERSION.TXT` in ARK's folder, which the release packages
-and the updater write. **Update** downloads `ARK_UPDATE.zip` from the latest
-release, puts the ARK Updater in `PSP/GAME/UPDATE` and offers to start it. The
+and the updater write. **Update** downloads `ARK_UPDATE.zip` from the release
+shown in the store, puts the ARK Updater in `PSP/GAME/UPDATE` and offers to start it. The
 updater updates ARK and this app, then restarts. It can also be started later
 from the Game column, like any other homebrew.
 
@@ -436,3 +436,46 @@ coverage for the new changes.
 
 GPL-3.0, like ARK. Built with libcurl, mbedTLS, cJSON, unarr, zlib, libpng
 and intraFont. The CA bundle is Mozilla's, from certifi.
+
+## Compatibility and replacement review
+
+The details page shows supported models and PSP system software when the store
+provides them. Missing dependencies and installed conflicts appear there too.
+Installation checks these requirements before downloading or changing files.
+Entries without compatibility metadata make no model or firmware guarantee.
+
+Optional entry fields:
+
+```json
+"compatibility": {"models": ["1000", "2000", "3000", "go", "street", "vita"], "firmware": ["6.60", "6.61"]},
+"requires": ["required-package-id"],
+"conflicts": ["incompatible-package-id"]
+```
+
+`models` and `firmware` are nonempty allowlists. Both constraints must match.
+Firmware means PSP system software, including the emulated version on Vita; it
+does not mean Vita firmware or ARK's release version. Package lists refer to
+Plugin Manager's installed database; manually installed plugins are not tracked
+as dependencies. Unknown constraint fields and malformed lists block installation
+with an explanation. `requires` and `conflicts` cannot reference the entry itself.
+The official UmdImageCreator entry excludes PSP Go and Vita, which have no UMD drive.
+
+After downloading and staging an install, **Review file changes** lists each
+existing file that will be replaced or removed, with its recorded package owner.
+Up/Down browses the complete list; confirm applies all changes; cancel keeps the
+existing files and database. An untracked file is labelled **not tracked**.
+When a replacement belongs to another package, accepting transfers that file's
+ownership to the new package, so uninstalling the previous owner cannot delete it.
+New files do not need a replacement prompt. The review also includes changes to
+`PLUGINS.TXT`; files preserved by an archive's `keep` rule are left out.
+
+## Validation for these changes
+
+Host tests cover compatibility rejection before staging, dependency/conflict
+checks, cancelling and accepting replacements owned by another package,
+transaction recovery, space exhaustion, and HTTP resume behavior. CI builds PSP
+and Vita packages and retains release checksums and toolchain provenance.
+Physical-device testing is tracked separately in the
+[hardware checklist](../docs/hardware-release-checklist.md); a passing build is
+not a hardware result. Screenshots of the new review and compatibility pages
+should be captured with the tested release during that checklist.

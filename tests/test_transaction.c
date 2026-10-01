@@ -221,10 +221,91 @@ static void test_space(void)
     expect(file, "old");
 }
 
+static int review_choice, review_calls;
+static int review(install_ctx *ctx, const char *text, int count)
+{
+    (void)ctx;
+    review_calls++;
+    CHECK(count >= 1);
+    CHECK(strstr(text, "Replace ms0:/SEPLUGINS/test.prx") != NULL);
+    CHECK(strstr(text, "owner: other") != NULL);
+    expect(file, "another package");
+    return review_choice;
+}
+
+static void test_review(void)
+{
+    install_ctx ctx = context(); ctx.download = download; ctx.review = review;
+    db_t db = {0}; char err[256];
+    db_package *other = calloc(1, sizeof(*other));
+    other->id = pm_strdup("other"); other->title = pm_strdup("Other");
+    other->version = pm_strdup("1"); other->root = pm_strdup(ctx.root);
+    other->category = pm_strdup("plugin");
+    CHECK_INT(db_list_add(&other->files, &other->n_files, file), 1);
+    CHECK_INT(db_put(&db, other), 0);
+    put(file, "another package");
+    review_choice = review_calls = 0;
+    CHECK_INT(install(&ctx, &db, "4", 0, err), -1);
+    CHECK_INT(review_calls, 1);
+    CHECK_STR(err, "Cancelled"); expect(file, "another package");
+    CHECK(db_find(&db, "test") == NULL);
+    CHECK_INT(db_find(&db, "other")->n_files, 1);
+    review_choice = 1;
+    CHECK_INT(install(&ctx, &db, "4", 0, err), 0);
+    CHECK_INT(review_calls, 2); expect(file, "downloaded");
+    CHECK_INT(db_find(&db, "other")->n_files, 0);
+    CHECK_INT(db_find(&db, "test")->n_files, 1);
+    CHECK_INT(installer_uninstall(&ctx, &db, "test", err, sizeof(err)), 0);
+    db_free(&db);
+}
+
+static void test_compatibility(void)
+{
+    install_ctx ctx = context(); strcpy(ctx.firmware, "6.61");
+    store_entry entry = {.id = "test"}; db_t db = {0}; char err[256];
+    cJSON *requirements = cJSON_Parse("{\"models\":[\"1000\",\"street\"],\"firmware\":[\"6.60\",\"6.61\"]}");
+    entry.compatibility = requirements;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    ctx.model = MODEL_STREET;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), 0);
+    ctx.model = MODEL_GO;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    ctx.model = MODEL_VITA;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    ctx.model = MODEL_1000; strcpy(ctx.firmware, "6.39");
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    cJSON_Delete(requirements);
+    requirements = cJSON_Parse("{\"models\":[\"1000\",12]}"); entry.compatibility = requirements;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    cJSON_Delete(requirements);
+    requirements = cJSON_Parse("{\"minimumMemory\":64}"); entry.compatibility = requirements;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    cJSON_Delete(requirements); entry.compatibility = NULL;
+    cJSON *ids = cJSON_Parse("[\"dependency\"]"); entry.requires = ids;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    CHECK(strstr(err, "dependency") != NULL);
+    db_package record = {.id = "dependency"}; db.pkgs = &record; db.count = 1;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), 0);
+    entry.requires = NULL; entry.conflicts = ids;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    db.count = 0;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), 0);
+    cJSON_Delete(ids);
+    entry.conflicts = cJSON_Parse("[\"test\"]");
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), -1);
+    cJSON_Delete((cJSON *)entry.conflicts); entry.conflicts = NULL;
+    CHECK_INT(installer_compatible(&ctx, &entry, &db, err, sizeof(err)), 0);
+    /* Constraints are checked before staging, downloads, or database writes. */
+    entry.compatibility = cJSON_Parse("{\"models\":[\"vita\"]}");
+    ctx.model = MODEL_1000;
+    CHECK_INT(installer_install(&ctx, &entry, &db, err, sizeof(err)), -1);
+    cJSON_Delete((cJSON *)entry.compatibility);
+}
+
 int main(void)
 {
     if (!getenv("PM_FS_ROOT")) return 2;
-    test_commit_and_abort(); test_commit_failures(); test_restart(); test_installer(); test_protected_paths(); test_space();
+    test_commit_and_abort(); test_commit_failures(); test_restart(); test_installer(); test_protected_paths(); test_space(); test_review(); test_compatibility();
     printf("test_transaction: %d checks, %d failures\n", test_checks, test_failures);
     return test_failures ? 1 : 0;
 }
