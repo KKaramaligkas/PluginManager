@@ -401,6 +401,11 @@ What still needs a real PSP:
 - Starting the ARK Updater from the app.
 - The Plugins category in the XMB.
 
+Use the [hardware release checklist](../docs/hardware-release-checklist.md) to
+record model, firmware, candidate checksum, and individual results, including
+transaction recovery. The host tests and build do not establish hardware
+coverage for the new changes.
+
 ## License
 
 GPL-3.0, like ARK. Built with libcurl, mbedTLS, cJSON, unarr, zlib, libpng
