@@ -39,6 +39,7 @@
 #include "fs.h"
 #include "gfx.h"
 #include "net.h"
+#include "http_policy.h"
 #include "resume.h"
 #include "tlsdiag.h"
 #include "util.h"
@@ -83,6 +84,13 @@ static char last_error[200];
 static char ca_path[PM_PATH_MAX];
 static char report_path[PM_PATH_MAX];
 static int tls_verify = 1;
+static int minimum_tls12;
+static char user_agent[96] = "PluginManager/" PM_VERSION " (PSP; ARK-5)";
+void net_set_client(const char *agent, int tls12)
+{
+    if (agent) pm_strlcpy(user_agent, agent, sizeof(user_agent));
+    minimum_tls12 = tls12;
+}
 static mbedtls_x509_crt ca_chain;
 static int ca_state;            /* 0 not loaded, 1 loaded, -1 failed */
 static int ca_parse_result, ca_count;   /* for the report file */
@@ -504,12 +512,14 @@ typedef struct {
     net_progress_fn cb;
     void *ud;
     tlsdiag tls;            /* the certificate check of the last connection */
+    net_response *response;
     resume_state *download;
 } xfer;
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     xfer *x = userdata;
+    if (nmemb && size > SIZE_MAX / nmemb) return 0;
     size_t n = size * nmemb;
     if (x->download) return resume_write(x->download, ptr, n);
     if (x->f >= 0) {
@@ -519,13 +529,14 @@ static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
         }
         return n;
     }
-    if (x->len + (int)n > x->max) {
+    if (n > (size_t)(x->max - x->len)) {
         x->too_big = 1;
         return 0;
     }
     if (x->len + (int)n + 1 > x->cap) {
         int cap = x->cap ? x->cap : 64 * 1024;
         while (cap < x->len + (int)n + 1) cap *= 2;
+        if (cap > x->max + 1) cap = x->max + 1;
         char *m = realloc(x->mem, cap);
         if (!m) {
             x->too_big = 1;
@@ -594,9 +605,10 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         }
     }
     if (headers) curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(c, CURLOPT_MAXREDIRS, 8L);
-    curl_easy_setopt(c, CURLOPT_USERAGENT, "PluginManager/" PM_VERSION " (PSP; ARK-5)");
+    if (pm_http_policy(c, url, user_agent, minimum_tls12) != CURLE_OK) {
+        curl_slist_free_all(headers); curl_easy_cleanup(c);
+        snprintf(err, errlen, "Could not configure secure HTTP requests"); return -1;
+    }
     curl_easy_setopt(c, CURLOPT_FAILONERROR, 1L);
     curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 20L);
     curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 16L);
@@ -637,6 +649,14 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
     CURLcode res = curl_easy_perform(c);
     long code = 0;
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+    if (x->response) {
+        char *final_url = NULL, *type = NULL;
+        curl_easy_getinfo(c, CURLINFO_EFFECTIVE_URL, &final_url);
+        curl_easy_getinfo(c, CURLINFO_CONTENT_TYPE, &type);
+        x->response->url_too_long = pm_strlcpy(x->response->url, final_url ? final_url : url, sizeof(x->response->url)) >= sizeof(x->response->url);
+        pm_strlcpy(x->response->content_type, type ? type : "", sizeof(x->response->content_type));
+        x->response->status = code;
+    }
     char *effective = NULL;
     char failed_url[512] = "";
     if (res == CURLE_PEER_FAILED_VERIFICATION) {
@@ -654,6 +674,9 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         return -1;
     }
 
+    if (res == CURLE_OK && x->response && x->response->url_too_long) {
+        snprintf(err, errlen, "The redirected address is too long"); return -1;
+    }
     if (res == CURLE_OK) return 0;
 
     switch (res) {
@@ -717,12 +740,19 @@ int net_download(const char *url, const char *dest_path, net_progress_fn cb, voi
     return -1;
 }
 
-char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, void *ud, char *err, int errlen)
+char *net_get_info(const char *url, int max_size, int *out_len, net_response *response,
+                   net_progress_fn cb, void *ud, char *err, int errlen)
 {
+    if (response) memset(response, 0, sizeof(*response));
+    if (out_len) *out_len = 0;
+    if (max_size < 1 || max_size > 4 * 1024 * 1024) {
+        snprintf(err, errlen, "Invalid response size limit"); return NULL;
+    }
     xfer x;
     memset(&x, 0, sizeof(x));
     x.f = -1;
     x.max = max_size;
+    x.response = response;
     x.cb = cb;
     x.ud = ud;
     if (perform(url, &x, err, errlen) < 0) {
@@ -732,4 +762,9 @@ char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, v
     if (!x.mem) x.mem = calloc(1, 1);
     if (out_len) *out_len = x.len;
     return x.mem;
+}
+
+char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, void *ud, char *err, int errlen)
+{
+    return net_get_info(url, max_size, out_len, NULL, cb, ud, err, errlen);
 }

@@ -6,14 +6,14 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 9
+    "revision": 10
   },
   "entries": [
     {
       "id": "ark",
       "title": "ARK-5",
       "author": "PSP-Arkfive",
-      "version": "5.1.9",
+      "version": "5.1.10",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -24,9 +24,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.9/ARK_UPDATE.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/ARK_UPDATE.zip",
           "file": "ARK_UPDATE.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.9/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/SHA256SUMS",
           "checksumFile": "ARK_UPDATE.zip"
         },
         {
@@ -52,7 +52,7 @@
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.6",
+      "version": "1.0.7",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -61,9 +61,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.9/PluginManager.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/PluginManager.zip",
           "file": "PluginManager.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.9/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/SHA256SUMS",
           "checksumFile": "PluginManager.zip"
         },
         {
@@ -75,6 +75,48 @@
         {
           "type": "message",
           "text": "Plugin Manager was updated. Restart it to use the new version."
+        }
+      ]
+    },
+    {
+      "id": "arkbrowser",
+      "title": "ARK Browser",
+      "author": "FasterARK powerup",
+      "version": "0.1.0",
+      "category": "homebrew",
+      "license": "GPL-3.0",
+      "website": "https://github.com/KKaramaligkas/FasterARK_powerup/tree/main/Browser",
+      "description": "A lightweight text browser with direct HTTPS using TLS 1.2 and certificate verification. Read text pages, follow links, go back, and download files. JavaScript, forms, images, CSS and video are not supported.",
+      "notes": "Needs Wi-Fi and a correctly set PSP date. PSP Street has no Wi-Fi. This first version requires real-device testing.",
+      "compatibility": {
+        "models": [
+          "1000",
+          "2000",
+          "3000",
+          "go",
+          "vita"
+        ]
+      },
+      "install": [
+        {
+          "type": "download",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/ARKBrowser.zip",
+          "file": "ARKBrowser.zip",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/SHA256SUMS",
+          "checksumFile": "ARKBrowser.zip"
+        },
+        {
+          "type": "extract",
+          "file": "ARKBrowser.zip",
+          "input": "PSP/GAME/ARKBrowser/",
+          "output": "%GAME%ARKBrowser/",
+          "keep": [
+            "downloads/*"
+          ]
+        },
+        {
+          "type": "message",
+          "text": "Launch ARK Browser from the Game column. Triangle opens the address keyboard."
         }
       ]
     },

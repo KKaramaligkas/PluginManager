@@ -54,6 +54,19 @@ void net_set_tls(const char *ca_file, int verify);
 /* Where the details of a failed certificate check are written. */
 void net_set_report_file(const char *path);
 
+typedef struct {
+    char url[1024];             /* final URL after redirects */
+    char content_type[128];
+    long status;
+    int url_too_long;
+} net_response;
+
+/* Optional app identity and TLS 1.2 minimum; defaults remain Plugin Manager's. */
+void net_set_client(const char *agent, int tls12);
+/* Like net_get, also returns final URL and response metadata, even on errors. */
+char *net_get_info(const char *url, int max_size, int *out_len, net_response *response,
+                   net_progress_fn cb, void *ud, char *err, int errlen);
+
 /* Keeps a validated .part download after interruption; resumes using If-Range.
    A refused or changed range is retried from the start. */
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen);
