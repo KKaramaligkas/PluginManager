@@ -81,6 +81,13 @@ enum {
 
 static int steps;
 static int inited;
+/* Cookies: off unless the app sets a file (the Plugin Manager keeps none).
+   One store shared by every request; requests come from one thread at a
+   time, so the share needs no locks. */
+static CURLSH *cookie_share;
+static char cookie_path[PM_PATH_MAX];
+static int cookies_loaded;
+
 static char last_error[200];
 static char ca_path[PM_PATH_MAX];
 static char report_path[PM_PATH_MAX];
@@ -156,6 +163,8 @@ int net_init(void)
 void net_term(void)
 {
     if (inited) {
+        if (cookie_share) curl_share_cleanup(cookie_share);
+        cookie_share = NULL;
         curl_global_cleanup();
         if (ca_state == 1) mbedtls_x509_crt_free(&ca_chain);
         ca_state = 0;
@@ -516,7 +525,50 @@ typedef struct {
     net_response *response;
     resume_state *download;
     int64_t done, total;
+    const char *post;       /* form data to POST, or NULL for GET */
+    long post_len;
 } xfer;
+
+void net_set_cookies(const char *path)
+{
+    pm_strlcpy(cookie_path, path ? path : "", sizeof(cookie_path));
+}
+
+static int cookies_ready(void)
+{
+    if (!cookie_path[0]) return 0;
+    if (!cookie_share) {
+        cookie_share = curl_share_init();
+        if (!cookie_share) return 0;
+        curl_share_setopt(cookie_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+    }
+    return 1;
+}
+
+void net_save_cookies(void)
+{
+    if (!inited || !cookie_share || !cookie_path[0]) return;
+    CURL *c = curl_easy_init();
+    if (!c) return;
+    char native[PM_PATH_MAX];
+    curl_easy_setopt(c, CURLOPT_SHARE, cookie_share);
+    curl_easy_setopt(c, CURLOPT_COOKIEJAR, fs_native_path(cookie_path, native, sizeof(native)));
+    curl_easy_cleanup(c);   /* writes the jar */
+}
+
+void net_clear_cookies(void)
+{
+    if (inited && cookie_share) {
+        CURL *c = curl_easy_init();
+        if (c) {
+            curl_easy_setopt(c, CURLOPT_SHARE, cookie_share);
+            curl_easy_setopt(c, CURLOPT_COOKIELIST, "ALL");
+            curl_easy_cleanup(c);
+        }
+    }
+    if (cookie_path[0]) fs_remove(cookie_path);
+    cookies_loaded = 1;     /* nothing left to load */
+}
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
@@ -614,6 +666,20 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
             headers = next;
             curl_easy_setopt(c, CURLOPT_RESUME_FROM_LARGE, (curl_off_t)x->download->offset);
         }
+    }
+    if (x->post) {
+        struct curl_slist *next = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+        if (!next) { curl_slist_free_all(headers); curl_easy_cleanup(c); snprintf(err, errlen, "Out of memory"); return -1; }
+        headers = next;
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, x->post_len);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDS, x->post);
+    }
+    if (cookies_ready()) {
+        char native[PM_PATH_MAX];
+        curl_easy_setopt(c, CURLOPT_SHARE, cookie_share);
+        /* The first request loads the saved cookies; "" just turns cookies on. */
+        curl_easy_setopt(c, CURLOPT_COOKIEFILE, cookies_loaded ? "" : fs_native_path(cookie_path, native, sizeof(native)));
+        cookies_loaded = 1;
     }
     if (headers) curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
     if (pm_http_policy(c, url, user_agent, minimum_tls12) != CURLE_OK) {
@@ -784,8 +850,8 @@ char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, v
 }
 
 /* Ephemeral, decoded page spool; never resumes or keeps failed content. */
-int net_get_file(const char *url, const char *path, int maximum, net_response *response,
-                 net_progress_fn cb, void *ud, char *err, int errlen)
+static int request_file(const char *url, const char *post, const char *path, int maximum, net_response *response,
+                        net_progress_fn cb, void *ud, char *err, int errlen)
 {
     if (maximum < 1 || maximum > 8 * 1024 * 1024) {
         snprintf(err, errlen, "Invalid page limit"); return -1;
@@ -795,8 +861,21 @@ int net_get_file(const char *url, const char *path, int maximum, net_response *r
     xfer x; memset(&x, 0, sizeof(x));
     x.f = fs_open(path, FS_WRITE); x.max = maximum; x.response = response;
     x.cb = cb; x.ud = ud; x.total = -1;
+    x.post = post; x.post_len = post ? (long)strlen(post) : 0;
     if (x.f < 0) { snprintf(err, errlen, "Could not create the page cache"); return -1; }
     int r = perform(url, &x, err, errlen); fs_close(x.f);
     if (r < 0) fs_remove(path);
     return r < 0 ? -1 : x.len;
+}
+
+int net_get_file(const char *url, const char *path, int maximum, net_response *response,
+                 net_progress_fn cb, void *ud, char *err, int errlen)
+{
+    return request_file(url, NULL, path, maximum, response, cb, ud, err, errlen);
+}
+
+int net_post_file(const char *url, const char *form, const char *path, int maximum, net_response *response,
+                  net_progress_fn cb, void *ud, char *err, int errlen)
+{
+    return request_file(url, form, path, maximum, response, cb, ud, err, errlen);
 }

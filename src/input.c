@@ -23,6 +23,12 @@ unsigned int BTN_CANCEL = PSP_CTRL_CIRCLE;
 
 static unsigned int last;
 static unsigned int next_repeat;
+static int analog_dpad = 1;
+
+void input_set_analog_dpad(int on)
+{
+    analog_dpad = on;
+}
 
 #ifdef PM_AUTOTEST
 /* Test builds only: "ms0:/pm_autotest.txt" lists "<frame> <BUTTON>" lines that
@@ -32,9 +38,16 @@ static unsigned int next_repeat;
 #include "fs.h"
 #include "util.h"
 
-static struct { unsigned int frame, button; } script[64];
+static struct { unsigned int frame, button; int x, y; } script[256];
 static int script_n, script_pos;
 static unsigned int frame_no;
+static int stick_x, stick_y;    /* "<frame> STICK <x> <y>" holds the stick from that frame */
+static int hold;                /* frames don't count while the app is busy */
+
+void input_autotest_hold(int on)
+{
+    hold = on;
+}
 
 static void autotest_load(void)
 {
@@ -46,9 +59,18 @@ static void autotest_load(void)
     };
     char *text = fs_read_all("ms0:/pm_autotest.txt", NULL, 16 * 1024);
     if (!text) return;
-    for (char *line = strtok(text, "\r\n"); line && script_n < 64; line = strtok(NULL, "\r\n")) {
+    for (char *line = strtok(text, "\r\n"); line && script_n < 256; line = strtok(NULL, "\r\n")) {
         char name[16];
         unsigned int frame;
+        int x, y;
+        if (sscanf(line, "%u STICK %d %d", &frame, &x, &y) == 3) {
+            script[script_n].frame = frame;
+            script[script_n].button = 0;
+            script[script_n].x = x;
+            script[script_n].y = y;
+            script_n++;
+            continue;
+        }
         if (sscanf(line, "%u %15s", &frame, name) != 2) continue;
         for (size_t i = 0; i < NELEMS(names); i++)
             if (!strcmp(name, names[i].name)) {
@@ -85,15 +107,26 @@ void input_update(input_state *in)
 
     unsigned int buttons = pad.Buttons & 0x0000FFFF;
     int ax = (int)pad.Lx - 128, ay = (int)pad.Ly - 128;
-    if (ax < -ANALOG_DEAD * 2) buttons |= PSP_CTRL_LEFT;
-    if (ax > ANALOG_DEAD * 2) buttons |= PSP_CTRL_RIGHT;
-    if (ay < -ANALOG_DEAD * 2) buttons |= PSP_CTRL_UP;
-    if (ay > ANALOG_DEAD * 2) buttons |= PSP_CTRL_DOWN;
 #ifdef PM_AUTOTEST
-    frame_no++;
-    while (script_pos < script_n && script[script_pos].frame < frame_no) script_pos++;
-    if (script_pos < script_n && script[script_pos].frame == frame_no) buttons |= script[script_pos].button;
+    if (!hold) {
+        frame_no++;
+        while (script_pos < script_n && script[script_pos].frame < frame_no) script_pos++;
+        while (script_pos < script_n && script[script_pos].frame == frame_no) {
+            if (script[script_pos].button) buttons |= script[script_pos].button;
+            else { stick_x = script[script_pos].x; stick_y = script[script_pos].y; }
+            script_pos++;
+        }
+    }
+    if (stick_x || stick_y) { ax = stick_x; ay = stick_y; }
 #endif
+    in->lx = ax;
+    in->ly = ay;
+    if (analog_dpad) {
+        if (ax < -ANALOG_DEAD * 2) buttons |= PSP_CTRL_LEFT;
+        if (ax > ANALOG_DEAD * 2) buttons |= PSP_CTRL_RIGHT;
+        if (ay < -ANALOG_DEAD * 2) buttons |= PSP_CTRL_UP;
+        if (ay > ANALOG_DEAD * 2) buttons |= PSP_CTRL_DOWN;
+    }
 
     /* input timing is a good entropy source for the TLS random generator */
     if (buttons != last) {

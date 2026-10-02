@@ -70,6 +70,15 @@ char *net_get_info(const char *url, int max_size, int *out_len, net_response *re
 /* Streams a decoded response to an ephemeral file, bounded after decompression. */
 int net_get_file(const char *, const char *, int, net_response *, net_progress_fn, void *, char *, int);
 
+/* Like net_get_file, sending `form` (application/x-www-form-urlencoded) by POST. */
+int net_post_file(const char *url, const char *form, const char *path, int maximum, net_response *response,
+                  net_progress_fn cb, void *ud, char *err, int errlen);
+
+/* Cookies for every request, loaded from and saved to `path`. Off unless set. */
+void net_set_cookies(const char *path);
+void net_save_cookies(void);
+void net_clear_cookies(void);
+
 /* Keeps a validated .part download after interruption; resumes using If-Range.
    A refused or changed range is retried from the start. */
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen);
