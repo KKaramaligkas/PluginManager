@@ -29,7 +29,7 @@ test_transaction: test_transaction.c $(CORE) test.h
 test_resume: test_resume.c $(CORE) test.h
 	$(CC) $(CFLAGS) -DPM_FS_TESTING -o $@ test_resume.c $(CORE) $(LDLIBS)
 
-resume_http: resume_http.c ../src/resume.c ../src/fs.c ../src/util.c
+resume_http: resume_http.c ../src/resume.c ../src/fs.c ../src/util.c ../src/transfer.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS) -lcurl
 
 test_worker: test_worker.c ../src/worker.c $(CORE) test.h

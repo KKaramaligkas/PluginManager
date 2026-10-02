@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <curl/curl.h>
 #include "../src/resume.h"
+#include "../src/transfer.h"
 static size_t body(char *p, size_t a, size_t b, void *ud) { return resume_write(ud, p, a*b); }
 int main(int argc, char **argv)
 {
@@ -29,7 +30,7 @@ int main(int argc, char **argv)
             curl_easy_setopt(c, CURLOPT_HTTPHEADER, headers);
             curl_easy_setopt(c, CURLOPT_RESUME_FROM_LARGE, (curl_off_t)s.offset);
         }
-        CURLcode result = curl_easy_perform(c);
+        CURLcode result = pm_transfer_run(c, NULL, NULL);
         curl_easy_cleanup(c);
         curl_slist_free_all(headers);
         int closed = resume_close(&s, result == CURLE_OK);
