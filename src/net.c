@@ -525,10 +525,12 @@ static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
     size_t n = size * nmemb;
     if (x->download) return resume_write(x->download, ptr, n);
     if (x->f >= 0) {
+        if (n > (size_t)(x->max - x->len)) { x->too_big = 1; return 0; }
         if (fs_write(x->f, ptr, (int)n) != (int)n) {
             x->write_error = 1;
             return 0;
         }
+        x->len += (int)n;
         return n;
     }
     if (n > (size_t)(x->max - x->len)) {
@@ -779,4 +781,22 @@ char *net_get_info(const char *url, int max_size, int *out_len, net_response *re
 char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, void *ud, char *err, int errlen)
 {
     return net_get_info(url, max_size, out_len, NULL, cb, ud, err, errlen);
+}
+
+/* Ephemeral, decoded page spool; never resumes or keeps failed content. */
+int net_get_file(const char *url, const char *path, int maximum, net_response *response,
+                 net_progress_fn cb, void *ud, char *err, int errlen)
+{
+    if (maximum < 1 || maximum > 8 * 1024 * 1024) {
+        snprintf(err, errlen, "Invalid page limit"); return -1;
+    }
+    if (cb && cb(ud, 0, -1)) { snprintf(err, errlen, "Cancelled"); return -1; }
+    if (response) memset(response, 0, sizeof(*response));
+    xfer x; memset(&x, 0, sizeof(x));
+    x.f = fs_open(path, FS_WRITE); x.max = maximum; x.response = response;
+    x.cb = cb; x.ud = ud; x.total = -1;
+    if (x.f < 0) { snprintf(err, errlen, "Could not create the page cache"); return -1; }
+    int r = perform(url, &x, err, errlen); fs_close(x.f);
+    if (r < 0) fs_remove(path);
+    return r < 0 ? -1 : x.len;
 }

@@ -67,6 +67,9 @@ void net_set_client(const char *agent, int tls12);
 char *net_get_info(const char *url, int max_size, int *out_len, net_response *response,
                    net_progress_fn cb, void *ud, char *err, int errlen);
 
+/* Streams a decoded response to an ephemeral file, bounded after decompression. */
+int net_get_file(const char *, const char *, int, net_response *, net_progress_fn, void *, char *, int);
+
 /* Keeps a validated .part download after interruption; resumes using If-Range.
    A refused or changed range is retried from the start. */
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen);
