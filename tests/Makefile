@@ -32,14 +32,22 @@ test_resume: test_resume.c $(CORE) test.h
 resume_http: resume_http.c ../src/resume.c ../src/fs.c ../src/util.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS) -lcurl
 
-check: test_core test_transaction test_resume resume_http
+test_worker: test_worker.c ../src/worker.c $(CORE) test.h
+	$(CC) $(CFLAGS) -Ipsp -o $@ test_worker.c ../src/worker.c $(CORE) $(LDLIBS)
+
+transfer_http: transfer_http.c ../src/transfer.c ../src/http_policy.c
+	$(CC) $(CFLAGS) -o $@ $^ -lcurl
+
+check: test_core test_transaction test_resume test_worker resume_http transfer_http
 	rm -rf $(WORK)/core && mkdir -p $(WORK)/core/ms0 $(WORK)/core/ef0
 	PM_FS_ROOT=$(WORK)/core PM_SEED_STORE=$(SEED) ./test_core
 	rm -rf $(WORK)/transaction && mkdir -p $(WORK)/transaction/ms0 $(WORK)/transaction/ef0
 	PM_FS_ROOT=$(WORK)/transaction ./test_transaction
 	rm -rf $(WORK)/resume && mkdir -p $(WORK)/resume/ms0 $(WORK)/resume/ef0
 	PM_FS_ROOT=$(WORK)/resume ./test_resume
+	./test_worker
 	python3 test_http_resume.py
+	python3 test_transfer.py
 
 install: test_install
 	rm -rf $(WORK)/install && mkdir -p $(WORK)/install/ms0 $(WORK)/install/ef0
@@ -50,7 +58,7 @@ live: test_install
 	PM_FS_ROOT=$(WORK)/live PM_SEED_STORE=$(SEED) PM_LIVE=1 ./test_install
 
 clean:
-	rm -rf test_core test_transaction test_resume resume_http test_install hostinstall $(WORK)
+	rm -rf test_core test_transaction test_resume test_worker resume_http transfer_http test_install hostinstall $(WORK)
 
 hostinstall: hostinstall.c $(CORE)
 	$(CC) -O1 -g -Wall -std=gnu99 -o $@ hostinstall.c $(CORE) $(LDLIBS)

@@ -132,10 +132,24 @@ static void test_restart(void)
 }
 
 static int bad_checksum;
+static int checksum_failure, checksum_cancel, saw_checksum_stage;
+static char current_stage[128];
+static void progress(install_ctx *ctx, const char *stage, int64_t done, int64_t total)
+{
+    (void)ctx; (void)done; (void)total;
+    pm_strlcpy(current_stage, stage, sizeof(current_stage));
+}
+static int cancelled_checksum(install_ctx *ctx) { (void)ctx; return checksum_cancel; }
 static int download(install_ctx *ctx, const char *url, const char *dest, char *err, int errlen)
 {
     (void)ctx; (void)url; (void)err; (void)errlen;
     if (strstr(url, "SHA256SUMS")) {
+        saw_checksum_stage = !strcmp(current_stage, "Downloading release checksums");
+        if (checksum_failure) {
+            snprintf(err, errlen, "%s", checksum_failure == 1 ? "The connection timed out" : "Cancelled");
+            if (checksum_failure == 2) checksum_cancel = 1;
+            return -1;
+        }
         const char *text = bad_checksum ? "not a checksum\n" :
             "b7a8a844a613be796bc1892dc480f9d92c50d32a5713a87758e5c5addc4ec814  dist/test\n";
         return fs_write_all(dest, text, (int)strlen(text));
@@ -183,6 +197,18 @@ static void test_installer(void)
     bad_checksum = 0;
     CHECK_INT(install(&ctx, &db, "3.0", 2, err), 0);
     CHECK_STR(db_find(&db, "test")->version, "3.0");
+    ctx.progress = progress; ctx.cancelled = cancelled_checksum;
+    for (checksum_failure = 1; checksum_failure <= 2; checksum_failure++) {
+        saw_checksum_stage = 0;
+        CHECK_INT(install(&ctx, &db, "4.0", 2, err), -1);
+        CHECK(saw_checksum_stage);
+        CHECK_STR(err, checksum_failure == 1 ? "The connection timed out" : "Cancelled");
+        CHECK_STR(db_find(&db, "test")->version, "3.0");
+        expect(file, "downloaded");
+        CHECK_INT(txn_recover(&ctx, err, sizeof(err)), 0);
+    }
+    checksum_failure = checksum_cancel = 0;
+    ctx.progress = NULL; ctx.cancelled = NULL;
     CHECK_INT(installer_uninstall(&ctx, &db, "test", err, sizeof(err)), 0);
     CHECK(!fs_exists(file)); CHECK(db_find(&db, "test") == NULL);
     expect(config, "# preserve this\n");

@@ -27,7 +27,7 @@ static int dl_progress(void *ud, int64_t done, int64_t total)
     (void)ud;
     job.cur = done;
     job.total = total;
-    return job.cancel;
+    return job.cancel || quit;
 }
 
 static int ctx_download(install_ctx *ctx, const char *url, const char *dest, char *err, int errlen)
@@ -51,7 +51,7 @@ static void ctx_progress(install_ctx *ctx, const char *stage, int64_t done, int6
 static int ctx_cancelled(install_ctx *ctx)
 {
     (void)ctx;
-    return job.cancel;
+    return job.cancel || quit;
 }
 
 static void do_refresh(void)
@@ -120,7 +120,7 @@ static void do_icons(void)
         if (!have) {
             snprintf(job.stage, sizeof(job.stage), "Downloading icons (%d/%d)", i + 1, n);
             char err[128];
-            if (net_download(e->icon, tmp, NULL, NULL, err, sizeof(err)) == 0 && image_png_valid(tmp)) {
+            if (net_download(e->icon, tmp, dl_progress, NULL, err, sizeof(err)) == 0 && !job.cancel && image_png_valid(tmp)) {
                 fs_remove(path);
                 if (fs_rename(tmp, path) == 0) have = 1;
             }
@@ -178,6 +178,7 @@ static void do_uninstall(void)
     install_ctx ctx;
     app_fill_install_ctx(&ctx);
     ctx.progress = ctx_progress;
+    ctx.cancelled = ctx_cancelled;
     job.result = installer_uninstall(&ctx, &app.db, job.id, job.error, sizeof(job.error));
     /* The uninstaller commits files and installed.json together. */
 }
@@ -205,12 +206,17 @@ static int worker_main(SceSize args, void *argp)
 
 int worker_start(void)
 {
+    if (thread >= 0) return 0;
+    quit = 0;
     sema = sceKernelCreateSema("pm_jobs", 0, 0, 1, NULL);
     if (sema < 0) return -1;
     thread = sceKernelCreateThread("pm_worker", worker_main, 0x30, 256 * 1024,
                                    PSP_THREAD_ATTR_USER | PSP_THREAD_ATTR_VFPU, NULL);
-    if (thread < 0) return -1;
-    return sceKernelStartThread(thread, 0, NULL);
+    if (thread >= 0 && sceKernelStartThread(thread, 0, NULL) >= 0) return 0;
+    if (thread >= 0) sceKernelDeleteThread(thread);
+    sceKernelDeleteSema(sema);
+    thread = sema = -1;
+    return -1;
 }
 
 void worker_stop(void)
@@ -219,12 +225,21 @@ void worker_stop(void)
     quit = 1;
     job.cancel = 1;
     sceKernelSignalSema(sema, 1);
-    SceUInt timeout = 3 * 1000 * 1000;
-    if (sceKernelWaitThreadEnd(thread, &timeout) < 0) sceKernelTerminateThread(thread);
+    /* Let cancellation close curl and finish transaction rollback. Killing
+       the thread could leave a CA semaphore locked or live writes unfinished. */
+    sceKernelWaitThreadEnd(thread, NULL);
     free((void *)job.review_text); job.review_text = NULL;
     sceKernelDeleteThread(thread);
     sceKernelDeleteSema(sema);
-    thread = -1;
+    thread = sema = -1;
+}
+
+static int worker_alive(void)
+{
+    SceKernelThreadInfo info;
+    memset(&info, 0, sizeof(info)); info.size = sizeof(info);
+    return thread >= 0 && sema >= 0 && sceKernelReferThreadStatus(thread, &info) >= 0 &&
+           !(info.status & (PSP_THREAD_STOPPED | PSP_THREAD_KILLED));
 }
 
 int worker_busy(void)
@@ -235,6 +250,7 @@ int worker_busy(void)
 int worker_submit(job_type type, const char *id, const char *title)
 {
     if (worker_busy()) return -1;
+    if (!worker_alive()) return -1;
     job.type = type;
     job.cancel = 0;
     job.needs_review = job.review_answer = 0;
@@ -248,17 +264,27 @@ int worker_submit(job_type type, const char *id, const char *title)
     job.run_path[0] = 0;
     job.run_title[0] = 0;
     job.new_store = NULL;
-    job.stage[0] = 0;
+    pm_strlcpy(job.stage, type == JOB_REFRESH ? "Downloading the store" :
+               type == JOB_ICONS ? "Downloading icons" : type == JOB_UNINSTALL ? "Preparing removal" :
+               "Preparing installation", sizeof(job.stage));
     pm_strlcpy(job.id, id ? id : "", sizeof(job.id));
     pm_strlcpy(job.title, title ? title : "", sizeof(job.title));
     job.started = sceKernelGetSystemTimeLow();
     job.running = 1;
-    sceKernelSignalSema(sema, 1);
+    if (sceKernelSignalSema(sema, 1) < 0) {
+        job.running = 0;
+        return -1;
+    }
     return 0;
 }
 
 int worker_collect(void)
 {
+    if (job.running && !job.finished && !worker_alive()) {
+        snprintf(job.error, sizeof(job.error), "The background worker stopped. Restart Plugin Manager to recover any unfinished installation.");
+        job.result = -1; job.cancel = 0; job.needs_review = 0;
+        job.running = 0; job.finished = 1;
+    }
     if (!job.finished) return 0;
     job.finished = 0;
     return 1;

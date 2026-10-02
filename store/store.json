@@ -13,7 +13,7 @@
       "id": "ark",
       "title": "ARK-5",
       "author": "PSP-Arkfive",
-      "version": "5.1.10",
+      "version": "5.1.11",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -24,9 +24,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/ARK_UPDATE.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.11/ARK_UPDATE.zip",
           "file": "ARK_UPDATE.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.11/SHA256SUMS",
           "checksumFile": "ARK_UPDATE.zip"
         },
         {
@@ -52,7 +52,7 @@
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.7",
+      "version": "1.0.8",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -61,9 +61,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/PluginManager.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.11/PluginManager.zip",
           "file": "PluginManager.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.11/SHA256SUMS",
           "checksumFile": "PluginManager.zip"
         },
         {
@@ -100,9 +100,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/ARKBrowser.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.11/ARKBrowser.zip",
           "file": "ARKBrowser.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.10/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.11/SHA256SUMS",
           "checksumFile": "ARKBrowser.zip"
         },
         {

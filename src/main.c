@@ -1147,14 +1147,17 @@ static int ensure_online(void)
 }
 
 /* waits for the background icon download to stop */
+static void on_job_finished(void);
+
 static void wait_worker_idle(void)
 {
     if (!worker_busy()) return;
     if (job.type == JOB_ICONS) worker_cancel();
-    while (job.running && !exit_requested) render();
+    while (job.running && !exit_requested) {
+        if (worker_collect()) { on_job_finished(); break; }
+        render();
+    }
 }
-
-static void on_job_finished(void);
 
 static char pending_run[256];
 
@@ -1168,7 +1171,11 @@ static int start_job(job_type type, const char *id, const char *title)
 {
     wait_worker_idle();
     if (worker_collect()) on_job_finished();
-    if (worker_submit(type, id, title) < 0) return -1;
+    if (worker_submit(type, id, title) < 0) {
+        ui.queue_n = ui.queue_total = 0;
+        message("Could not start", "The background worker is unavailable. Restart Plugin Manager and try again.");
+        return -1;
+    }
     if (type != JOB_ICONS) ui.modal = MODAL_PROGRESS;
     return 0;
 }
@@ -1735,7 +1742,14 @@ int main(int argc, char *argv[])
 
     app_load_offline_store();
     rebuild_list();
-    worker_start();
+    if (worker_start() < 0) {
+        message("Could not start", "Not enough system memory to start the background worker. Exit Plugin Manager and restart the PSP before trying again.");
+        input_state startup_input;
+        while (!exit_requested && ui.modal != MODAL_NONE) {
+            input_update(&startup_input); handle_modal(&startup_input); render();
+        }
+        text_term(); gfx_term(); sceKernelExitGame(); return 1;
+    }
 
     int from_xmb = fs_exists(app.launch_file);
     handle_launch_request();

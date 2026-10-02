@@ -291,8 +291,12 @@ static int checksum_from_release(run_state *rs, const cJSON *step, char *hex)
         return fail(rs, "Checksum manifest path is too long", NULL);
     if (db_list_add(&rs->temp_files, &rs->n_temp, path) < 0)
         return fail(rs, "Out of memory", NULL);
-    if (!rs->ctx->download || rs->ctx->download(rs->ctx, url, path, rs->err, rs->errlen) < 0)
-        return fail(rs, "Can't download release checksums", NULL);
+    if (rs->ctx->progress) rs->ctx->progress(rs->ctx, "Downloading release checksums", 0, -1);
+    if (!rs->ctx->download || rs->ctx->download(rs->ctx, url, path, rs->err, rs->errlen) < 0) {
+        if (!rs->err[0]) fail(rs, "Can't download release checksums", NULL);
+        return -1;
+    }
+    if (rs->ctx->cancelled && rs->ctx->cancelled(rs->ctx)) return fail(rs, "Cancelled", NULL);
     char *text = fs_read_all(path, NULL, 64 * 1024);
     if (!text) return fail(rs, "Can't read release checksums", NULL);
     int found = 0;
@@ -833,11 +837,14 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     err[0] = 0;
     ctx->messages[0] = ctx->run_path[0] = ctx->run_title[0] = 0;
     if (installer_compatible(ctx, e, db, err, errlen) < 0) return -1;
+    if (ctx->cancelled && ctx->cancelled(ctx)) { snprintf(err, errlen, "Cancelled"); return -1; }
+    if (ctx->progress) ctx->progress(ctx, "Preparing recovery journal", 0, -1);
     if (txn_begin(&rs.tx, ctx, err, errlen) < 0) return -1;
 
     db_t candidate = {0};
     db_package *rec = calloc(1, sizeof(*rec));
     int ret = -1;
+    if (ctx->progress) ctx->progress(ctx, "Preparing package database", 0, -1);
     if (!rec || clone_db(&rs.tx, db, &candidate) < 0) {
         snprintf(err, errlen, "Can't prepare the package database");
         goto done;
@@ -856,6 +863,7 @@ int installer_install(install_ctx *ctx, const store_entry *e, db_t *db, char *er
     }
     const db_package *old = db_find(db, e->id);
     rs.old = old;
+    if (ctx->progress) ctx->progress(ctx, "Reading plugin configuration", 0, -1);
     installer_plugins_txt(ctx->root, rs.ptxt_file, sizeof(rs.ptxt_file));
     if (ptxt_load(&rs.ptxt, rs.ptxt_file) < 0) {
         snprintf(err, errlen, "Can't read plugin configuration");
@@ -926,6 +934,7 @@ done:
         ctx->messages[0] = ctx->run_path[0] = 0;
         if (!err[0]) snprintf(err, errlen, "Could not prepare the update");
         /* Recovery failures replace the original error and retain the backups. */
+        if (ctx->progress) ctx->progress(ctx, "Cleaning up installation", 0, -1);
         txn_rollback(&rs.tx, err, errlen);
     }
     if (rec) { db_package_free(rec); free(rec); }

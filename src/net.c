@@ -40,6 +40,7 @@
 #include "gfx.h"
 #include "net.h"
 #include "http_policy.h"
+#include "transfer.h"
 #include "resume.h"
 #include "tlsdiag.h"
 #include "util.h"
@@ -514,6 +515,7 @@ typedef struct {
     tlsdiag tls;            /* the certificate check of the last connection */
     net_response *response;
     resume_state *download;
+    int64_t done, total;
 } xfer;
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
@@ -559,7 +561,14 @@ static int xferinfo_cb(void *p, curl_off_t dltotal, curl_off_t dlnow, curl_off_t
     int64_t offset = x->download ? x->download->offset : 0;
     int64_t done = dlnow > INT64_MAX - offset ? INT64_MAX : (int64_t)dlnow + offset;
     int64_t total = dltotal > 0 && dltotal <= INT64_MAX - offset ? (int64_t)dltotal + offset : -1;
+    x->done = done; x->total = total;
     return x->cb ? x->cb(x->ud, done, total) : 0;
+}
+
+static int poll_cancel(void *ud)
+{
+    xfer *x = ud;
+    return x->cb ? x->cb(x->ud, x->done, x->total) : 0;
 }
 
 static int perform(const char *url, xfer *x, char *err, int errlen)
@@ -646,7 +655,7 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         curl_easy_setopt(c, CURLOPT_SSL_VERIFYHOST, 0L);
     }
 
-    CURLcode res = curl_easy_perform(c);
+    CURLcode res = pm_transfer_run(c, poll_cancel, x);
     long code = 0;
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
     if (x->response) {
@@ -719,6 +728,7 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
 int net_download(const char *url, const char *dest_path, net_progress_fn cb, void *ud, char *err, int errlen)
 {
     for (int attempt = 0; attempt < 2; attempt++) {
+        if (cb && cb(ud, 0, -1)) { snprintf(err, errlen, "Cancelled"); return -1; }
         resume_state state;
         if (resume_open(&state, url, dest_path) < 0) {
             snprintf(err, errlen, "Can't create %s", dest_path);
@@ -727,6 +737,7 @@ int net_download(const char *url, const char *dest_path, net_progress_fn cb, voi
         xfer x;
         memset(&x, 0, sizeof(x));
         x.f = -1; x.cb = cb; x.ud = ud; x.download = &state;
+        x.done = state.offset; x.total = -1;
         int result = perform(url, &x, err, errlen);
         int closed = resume_close(&state, result == 0);
         if (result == 0 && closed == 0) return 0;
@@ -753,6 +764,7 @@ char *net_get_info(const char *url, int max_size, int *out_len, net_response *re
     x.f = -1;
     x.max = max_size;
     x.response = response;
+    x.total = -1;
     x.cb = cb;
     x.ud = ud;
     if (perform(url, &x, err, errlen) < 0) {
