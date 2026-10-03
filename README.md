@@ -15,7 +15,7 @@ FasterARK and is listed in three places:
 This repository is the app's source. It was split from
 [FasterARK powerup](https://github.com/KKaramaligkas/FasterARK_powerup), with its history, so that it can be developed on
 its own. FasterARK builds it into its packages and releases, and FasterARK's
-store lists it ([Store format](#store-format)). [ARK Browser](https://github.com/KKaramaligkas/Flow)
+store lists it ([Store format](#store-format)). The [Flow](https://github.com/KKaramaligkas/Flow) browser
 uses its network, text, input and drawing code.
 
 ## Installing
