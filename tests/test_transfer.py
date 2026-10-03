@@ -69,5 +69,36 @@ class Transfer(unittest.TestCase):
             thread.join()
 
 
+    def test_requests_share_a_connection_until_closed(self):
+        connections = []
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'   # keep-alive
+            def log_message(self, *args):
+                pass
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Length', '2')
+                self.end_headers()
+                self.wfile.write(b'OK')
+        class Server(http.server.ThreadingHTTPServer):
+            daemon_threads = True
+            def process_request(self, request, address):
+                connections.append(address)
+                super().process_request(request, address)
+        server = Server(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            result = subprocess.run(['./transfer_http', f'http://127.0.0.1:{server.server_port}/file', '-1', '5000', '3'],
+                                    capture_output=True, timeout=5, check=True)
+            self.assertEqual(result.stdout.split(), [b'0'] * 4)
+            # Three requests over one connection; after closing it, a new one.
+            self.assertEqual(len(connections), 2)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
 if __name__ == '__main__':
     unittest.main()

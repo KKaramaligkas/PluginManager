@@ -81,10 +81,11 @@ enum {
 
 static int steps;
 static int inited;
-/* Cookies: off unless the app sets a file (the Plugin Manager keeps none).
-   One store shared by every request; requests come from one thread at a
-   time, so the share needs no locks. */
-static CURLSH *cookie_share;
+/* One store shared by every request: TLS sessions, so that a new connection
+   to a server seen before resumes its session instead of a full handshake,
+   and cookies, off unless the app sets a file (the Plugin Manager keeps
+   none). Requests come from one thread at a time, so it needs no locks. */
+static CURLSH *share;
 static char cookie_path[PM_PATH_MAX];
 static int cookies_loaded;
 
@@ -163,8 +164,9 @@ int net_init(void)
 void net_term(void)
 {
     if (inited) {
-        if (cookie_share) curl_share_cleanup(cookie_share);
-        cookie_share = NULL;
+        pm_transfer_close();
+        if (share) curl_share_cleanup(share);
+        share = NULL;
         curl_global_cleanup();
         if (ca_state == 1) mbedtls_x509_crt_free(&ca_chain);
         ca_state = 0;
@@ -377,6 +379,7 @@ void net_profile_name(char *out, int size)
 void net_disconnect(void)
 {
     if (!inited || apctl_state() == PSP_NET_APCTL_STATE_DISCONNECTED) return;
+    pm_transfer_close();    /* while the link is still up to close them */
     sceNetApctlDisconnect();
     /* the state changes a moment later; until then the PSP still looks
        connected, and a new connection can't start */
@@ -534,34 +537,33 @@ void net_set_cookies(const char *path)
     pm_strlcpy(cookie_path, path ? path : "", sizeof(cookie_path));
 }
 
-static int cookies_ready(void)
+/* Made at the first request, after the app has set its cookie file. */
+static CURLSH *shared(void)
 {
-    if (!cookie_path[0]) return 0;
-    if (!cookie_share) {
-        cookie_share = curl_share_init();
-        if (!cookie_share) return 0;
-        curl_share_setopt(cookie_share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
+    if (!share && (share = curl_share_init()) != NULL) {
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
+        if (cookie_path[0]) curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
     }
-    return 1;
+    return share;
 }
 
 void net_save_cookies(void)
 {
-    if (!inited || !cookie_share || !cookie_path[0]) return;
+    if (!inited || !share || !cookie_path[0]) return;
     CURL *c = curl_easy_init();
     if (!c) return;
     char native[PM_PATH_MAX];
-    curl_easy_setopt(c, CURLOPT_SHARE, cookie_share);
+    curl_easy_setopt(c, CURLOPT_SHARE, share);
     curl_easy_setopt(c, CURLOPT_COOKIEJAR, fs_native_path(cookie_path, native, sizeof(native)));
     curl_easy_cleanup(c);   /* writes the jar */
 }
 
 void net_clear_cookies(void)
 {
-    if (inited && cookie_share) {
+    if (inited && share && cookie_path[0]) {
         CURL *c = curl_easy_init();
         if (c) {
-            curl_easy_setopt(c, CURLOPT_SHARE, cookie_share);
+            curl_easy_setopt(c, CURLOPT_SHARE, share);
             curl_easy_setopt(c, CURLOPT_COOKIELIST, "ALL");
             curl_easy_cleanup(c);
         }
@@ -674,9 +676,9 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, x->post_len);
         curl_easy_setopt(c, CURLOPT_POSTFIELDS, x->post);
     }
-    if (cookies_ready()) {
+    if (shared()) curl_easy_setopt(c, CURLOPT_SHARE, share);
+    if (share && cookie_path[0]) {
         char native[PM_PATH_MAX];
-        curl_easy_setopt(c, CURLOPT_SHARE, cookie_share);
         /* The first request loads the saved cookies; "" just turns cookies on. */
         curl_easy_setopt(c, CURLOPT_COOKIEFILE, cookies_loaded ? "" : fs_native_path(cookie_path, native, sizeof(native)));
         cookies_loaded = 1;
