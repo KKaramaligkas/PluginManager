@@ -6,14 +6,14 @@
     "url": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/store.json",
     "iconBase": "https://raw.githubusercontent.com/kkaramaligkas/fasterark_powerup/main/PluginManager/store/icons/",
     "version": 1,
-    "revision": 11
+    "revision": 12
   },
   "entries": [
     {
       "id": "ark",
       "title": "ARK-5",
       "author": "PSP-Arkfive",
-      "version": "5.1.12",
+      "version": "5.1.13",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -24,9 +24,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.12/ARK_UPDATE.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.13/ARK_UPDATE.zip",
           "file": "ARK_UPDATE.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.12/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.13/SHA256SUMS",
           "checksumFile": "ARK_UPDATE.zip"
         },
         {
@@ -52,7 +52,7 @@
       "id": "pluginmanager",
       "title": "Plugin Manager",
       "author": "FasterARK powerup",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "category": "utility",
       "license": "GPL-3.0",
       "website": "https://github.com/kkaramaligkas/fasterark_powerup",
@@ -61,9 +61,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.12/PluginManager.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.13/PluginManager.zip",
           "file": "PluginManager.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.12/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.13/SHA256SUMS",
           "checksumFile": "PluginManager.zip"
         },
         {
@@ -82,12 +82,12 @@
       "id": "arkbrowser",
       "title": "ARK Browser",
       "author": "FasterARK powerup",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "category": "homebrew",
       "license": "GPL-3.0",
       "website": "https://github.com/KKaramaligkas/FasterARK_powerup/tree/main/Browser",
-      "description": "On-device modern JavaScript, basic CSS, direct verified TLS 1.2 HTTPS and larger streamed pages. A lightweight PSP reader with bounded memory.",
-      "notes": "Needs Wi-Fi and a correctly set PSP date. PSP Street has no Wi-Fi. This first version requires real-device testing.",
+      "description": "Lays pages out on the PSP with CSS, and you click links and fill in forms with a pointer on the analog stick. Runs page JavaScript on the device, keeps cookies, and uses verified TLS 1.2 HTTPS.",
+      "notes": "Needs Wi-Fi and a correctly set PSP date. PSP Street has no Wi-Fi. Tested in PPSSPP on twelve real sites; not yet tested on a real PSP.",
       "compatibility": {
         "models": [
           "1000",
@@ -100,9 +100,9 @@
       "install": [
         {
           "type": "download",
-          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.12/ARKBrowser.zip",
+          "url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.13/ARKBrowser.zip",
           "file": "ARKBrowser.zip",
-          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.12/SHA256SUMS",
+          "sha256Url": "https://github.com/KKaramaligkas/FasterARK_powerup/releases/download/ARK-5.1.13/SHA256SUMS",
           "checksumFile": "ARKBrowser.zip"
         },
         {
