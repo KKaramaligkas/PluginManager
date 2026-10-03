@@ -12,6 +12,12 @@ FasterARK and is listed in three places:
 - **XMB → Plugins**, an optional category that lists your installed plugins.
   It's off by default ([details below](#the-plugins-category)).
 
+This repository is the app's source. It was split from
+[FasterARK powerup](https://github.com/KKaramaligkas/FasterARK_powerup), with its history, so that it can be developed on
+its own. FasterARK builds it into its packages and releases, and FasterARK's
+store lists it ([Store format](#store-format)). [ARK Browser](https://github.com/KKaramaligkas/Flow)
+uses its network, text, input and drawing code.
+
 ## Installing
 
 - The `Full` variant of FasterARK (`FasterARK_psp_full.zip`) includes it.
@@ -315,7 +321,7 @@ A complete entry:
 2. Add an icon to `store/icons/`: the release's `ICON0.PNG`, or a tile made
    with `tools/make_art.py`.
 3. Download the archives into a folder and run
-   `make -C PluginManager/tests install PKG_DIR=that/folder`. This installs
+   `make -C tests install PKG_DIR=that/folder`. This installs
    every entry with the app's engine into a fake memory stick and checks the
    result, as well as updates and uninstalls.
 4. Increase `storeInfo.revision`.
@@ -330,9 +336,13 @@ verify checksums. The NZPortable entry is a named nightly snapshot; a later
 nightly is a separate store update. `tools/check_store_downloads.py` rejects
 moving or unchecked downloads in CI.
 
-For a new ARK release, change `Updater/version.h` and, when applicable,
-`src/version.h`, then run `python3 tools/release_store.py --seed` from the repo
-root and commit the refreshed seed with its revision bump. The seed references
+The store that installed copies read is the one in FasterARK powerup
+(`PluginManager/store/store.json` there, at the address in `src/version.h`);
+`store/` here is the snapshot bundled with the app and used by the tests.
+For a new ARK release, FasterARK changes `Updater/version.h` and, when
+applicable, this app's `src/version.h`, then runs
+`python3 tools/release_store.py --seed` from its root and commits the
+refreshed seed with its revision bump. The seed references
 that exact release's `SHA256SUMS`, avoiding the impossible cycle of embedding an
 archive's own hash inside it. The build also prepares this seed before packaging.
 After packaging, CI publishes `store.json` with the actual archive hashes along
@@ -345,16 +355,13 @@ libraries: `psp-pacman -S curl mbedtls cjson unarr libintrafont libpng zlib
 bzip2 liblzma`.
 
 ```sh
-make -C PluginManager            # EBOOT.PBP
-make -C PluginManager package    # dist/PSP/APPS/PluginManager and dist/PluginManager.zip
+make            # EBOOT.PBP
+make package    # dist/PSP/APPS/PluginManager and dist/PluginManager.zip
 ```
 
-`make` at the root of the repository builds the release packages. It also
-builds XMBControl from [`XMBControl/`](../XMBControl) and VSHControl from
-[`VSHControl/`](../VSHControl) into the `FLASH0.ARK` of every variant
-(`tools/flash0.py`), and writes `VERSION.TXT` from `Updater/version.h`. The
-build stops if the store's `ark` entry has another version
-(`tools/check_store_version.py`).
+The XMB entries come from XMBControl, which FasterARK builds into ARK's
+`FLASH0.ARK` together with its release packages
+([FasterARK's build](https://github.com/KKaramaligkas/FasterARK_powerup#install-instructions)).
 
 After linking, the build runs `tools/check_imports.py`, which fails the build
 when an import table comes out broken. The toolchain adds libraries such as
@@ -364,24 +371,24 @@ and on the PSP the socket functions would call the wrong system functions.
 
 ## Testing
 
-Pull requests run the sanitized host tests before building release packages.
-Publishing also depends on those tests. SDK archives, SDK source revisions,
-Vita library archives, and build actions are pinned; `tools/toolchains.json`
-records the SDK inputs and their SHA-256 checksums. A changed upstream asset
-fails verification rather than silently changing the build.
+Pushes and pull requests run the sanitized host tests, then build
+`PluginManager.zip` (`.github/workflows/ci.yml`). SDK archives, SDK source
+revisions and build actions are pinned; `tools/toolchains.json` records the
+SDK inputs and their SHA-256 checksums, the same as FasterARK's. A changed
+upstream asset fails verification rather than silently changing the build.
 
 PSP libraries installed by `psp-pacman` still come from its current repository;
 `psp-packages.txt` in each release records their exact installed versions.
 `toolchains.json`, compiler versions, the source commit, and `SHA256SUMS` are
 published with the release to make its build inputs and outputs inspectable.
 
-- `make -C PluginManager/tests check`: unit tests (store parsing, paths,
+- `make -C tests check`: unit tests (store parsing, paths,
   `PLUGINS.TXT` editing, database, installer rules, cancellation, failed writes
   and recovery after an interrupted commit), built with
   AddressSanitizer and UBSan.
-- `make -C PluginManager/tests install PKG_DIR=…`: installs, updates and
+- `make -C tests install PKG_DIR=…`: installs, updates and
   uninstalls every store entry from local copies of the archives.
-- `make -C PluginManager/tests live`: the same, downloading the archives.
+- `make -C tests live`: the same, downloading the archives.
 - `tests/hostinstall` fills a memory stick folder for an emulator.
 - The app runs in [PPSSPP](https://www.ppsspp.org/). A build with
   `EXTRA_CFLAGS=-DPM_AUTOTEST` presses buttons listed in `ms0:/pm_autotest.txt`
@@ -427,7 +434,7 @@ What still needs a real PSP:
 - Starting the ARK Updater from the app.
 - The Plugins category in the XMB.
 
-Use the [hardware release checklist](../docs/hardware-release-checklist.md) to
+Use the [hardware release checklist](https://github.com/KKaramaligkas/FasterARK_powerup/blob/main/docs/hardware-release-checklist.md) to
 record model, firmware, candidate checksum, and individual results, including
 transaction recovery. The host tests and build do not establish hardware
 coverage for the new changes.
@@ -476,6 +483,6 @@ checks, cancelling and accepting replacements owned by another package,
 transaction recovery, space exhaustion, and HTTP resume behavior. CI builds PSP
 and Vita packages and retains release checksums and toolchain provenance.
 Physical-device testing is tracked separately in the
-[hardware checklist](../docs/hardware-release-checklist.md); a passing build is
+[hardware checklist](https://github.com/KKaramaligkas/FasterARK_powerup/blob/main/docs/hardware-release-checklist.md); a passing build is
 not a hardware result. Screenshots of the new review and compatibility pages
 should be captured with the tested release during that checklist.
