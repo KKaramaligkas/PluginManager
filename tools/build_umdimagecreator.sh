@@ -10,7 +10,9 @@
 # strnicmp().
 #
 # Usage: tools/build_umdimagecreator.sh [tag]      (default v1.7)
-# Needs the pspdev toolchain (psp-config on the PATH) and zip.
+# Needs the pspdev toolchain (psp-config on the PATH) and zip. The package is
+# written to $PACKAGES, by default this repository's store/packages; in
+# FasterARK, pass PACKAGES=$PWD/PluginManager/store/packages.
 
 set -eu
 
@@ -54,8 +56,9 @@ EOF
 
 # fixed dates, so the same build gives the same archive
 find "$PKG" -exec touch -d '2024-06-01 00:00:00' {} +
-mkdir -p "$HERE/store/packages"
-OUT="$HERE/store/packages/UmdImageCreator-$VERSION.zip"
+PACKAGES=${PACKAGES:-$HERE/store/packages}
+mkdir -p "$PACKAGES"
+OUT="$PACKAGES/UmdImageCreator-$VERSION.zip"
 rm -f "$OUT"
 (cd "$PKG" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | TZ=UTC zip -q -X -9 "$OUT" -@)
 echo "$OUT"

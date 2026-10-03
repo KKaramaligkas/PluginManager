@@ -1,8 +1,8 @@
 # Host unit/integration tests for the Plugin Manager core.
 #   sudo apt-get install libcjson-dev libunarr-dev libmbedtls-dev zlib1g-dev libcurl4-openssl-dev
-#   make -C PluginManager/tests            # unit tests
-#   make -C PluginManager/tests install PKG_DIR=/path/to/downloaded/archives
-#   make -C PluginManager/tests live       # downloads every store package (network)
+#   make -C tests            # unit tests
+#   make -C tests install PKG_DIR=/path/to/downloaded/archives
+#   make -C tests live       # downloads every store package (network)
 
 CC      ?= gcc
 CFLAGS  ?= -O1 -g -Wall -Wextra -Wno-unused-parameter -std=gnu99 -fsanitize=address,undefined
@@ -10,6 +10,7 @@ LDLIBS   = -lcjson -lunarr -lmbedcrypto -lz
 
 CORE     = ../src/util.c ../src/fs.c ../src/store.c ../src/pluginstxt.c ../src/db.c \
            ../src/archive.c ../src/installer.c ../src/transaction.c ../src/resume.c ../src/tlsdiag.c
+# the store whose entries the tests parse and install (FasterARK passes its live one)
 SEED     = $(abspath ../store/store.json)
 WORK     = $(CURDIR)/work
 

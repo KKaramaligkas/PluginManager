@@ -32,6 +32,9 @@ include $(PSPSDK)/lib/build.mak
 check-imports: $(TARGET).elf
 	python3 tools/check_imports.py $(TARGET).elf
 
+# The store copy packaged with the app; FasterARK passes its live store
+STORE = store/store.json
+
 # Folder layout installed on the memory stick (PSP/APPS/PluginManager)
 .PHONY: package
 package: check-imports EBOOT.PBP
@@ -39,5 +42,5 @@ package: check-imports EBOOT.PBP
 	mkdir -p dist/PSP/APPS/PluginManager
 	cp EBOOT.PBP dist/PSP/APPS/PluginManager/
 	cp res/cacert.pem dist/PSP/APPS/PluginManager/
-	cp store/store.json dist/PSP/APPS/PluginManager/
+	cp $(STORE) dist/PSP/APPS/PluginManager/store.json
 	cd dist && zip -q -r PluginManager.zip PSP

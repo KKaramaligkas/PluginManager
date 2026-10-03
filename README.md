@@ -170,8 +170,10 @@ Everything lives in `PSP/APPS/PluginManager/`:
 
 ## Store format
 
-A store is one JSON file. The default store is
-[`store/store.json`](store/store.json) in this repository, served from GitHub.
+A store is one JSON file. The default store is FasterARK powerup's
+[`PluginManager/store/store.json`](https://github.com/KKaramaligkas/FasterARK_powerup/blob/main/PluginManager/store/store.json),
+served from GitHub (`PM_DEFAULT_STORE` in `src/version.h`). `store/` in this
+repository is a copy of it, packaged with the app and used by the tests.
 Anyone can host another one and point the app to it, as long as it is served
 over https.
 
@@ -316,25 +318,28 @@ A complete entry:
 
 ### Adding a package to the default store
 
-1. Add the entry to `store/store.json`, with the `sha256` of each download
-   (`sha256sum file.zip`).
-2. Add an icon to `store/icons/`: the release's `ICON0.PNG`, or a tile made
-   with `tools/make_art.py`.
+This happens in FasterARK powerup, where this repository is the
+`PluginManager/app` submodule:
+
+1. Add the entry to `PluginManager/store/store.json`, with the `sha256` of each
+   download (`sha256sum file.zip`).
+2. Add an icon to `PluginManager/store/icons/`: the release's `ICON0.PNG`, or a
+   tile made with `tools/make_art.py`.
 3. Download the archives into a folder and run
-   `make -C tests install PKG_DIR=that/folder`. This installs
-   every entry with the app's engine into a fake memory stick and checks the
-   result, as well as updates and uninstalls.
+   `make -C PluginManager/app/tests install PKG_DIR=that/folder SEED=$PWD/PluginManager/store/store.json`.
+   This installs every entry with the app's engine into a fake memory stick
+   and checks the result, as well as updates and uninstalls.
 4. Increase `storeInfo.revision`.
 
 Packages whose author publishes no usable download are built from source into
-`store/packages/` and served from this repository. For now that's
+`PluginManager/store/packages/` and served from FasterARK. For now that's
 UmdImageCreator: `tools/build_umdimagecreator.sh` builds it from the author's
 tag, with the source unchanged.
 
 Official entries use fixed release URLs, commit URLs, or GitHub asset IDs and
 verify checksums. The NZPortable entry is a named nightly snapshot; a later
-nightly is a separate store update. `tools/check_store_downloads.py` rejects
-moving or unchecked downloads in CI.
+nightly is a separate store update. FasterARK's
+`tools/check_store_downloads.py` rejects moving or unchecked downloads in CI.
 
 The store that installed copies read is the one in FasterARK powerup
 (`PluginManager/store/store.json` there, at the address in `src/version.h`);
@@ -358,6 +363,9 @@ bzip2 liblzma`.
 make            # EBOOT.PBP
 make package    # dist/PSP/APPS/PluginManager and dist/PluginManager.zip
 ```
+
+`make package STORE=path/to/store.json` packages another store as the app's
+built-in copy; FasterARK packages its live store this way.
 
 The XMB entries come from XMBControl, which FasterARK builds into ARK's
 `FLASH0.ARK` together with its release packages
