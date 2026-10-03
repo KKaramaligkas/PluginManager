@@ -450,6 +450,12 @@ static CURLcode sslctx_cb(CURL *curl, void *sslctx, void *parm)
 {
     (void)curl;
     mbedtls_ssl_conf_ca_chain((mbedtls_ssl_config *)sslctx, &ca_chain, NULL);
+#ifdef MBEDTLS_SSL_SESSION_TICKETS
+    /* curl 7.64.1 turns session tickets off, so only servers that keep a
+       session cache could resume a session; most resume TLS 1.2 sessions
+       only from a ticket (curl stores the ticket with the session) */
+    mbedtls_ssl_conf_session_tickets((mbedtls_ssl_config *)sslctx, MBEDTLS_SSL_SESSION_TICKETS_ENABLED);
+#endif
     if (parm) {
         /* each connection (a redirect opens a new one) starts a new record */
         tlsdiag *d = parm;
