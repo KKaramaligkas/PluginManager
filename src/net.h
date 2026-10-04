@@ -59,6 +59,7 @@ typedef struct {
     char content_type[128];
     long status;
     int url_too_long;
+    int truncated;              /* net_get_file()/net_post_file(): only the first `maximum` bytes were kept */
 } net_response;
 
 /* Optional app identity and TLS 1.2 minimum; defaults remain Plugin Manager's. */
@@ -67,7 +68,8 @@ void net_set_client(const char *agent, int tls12);
 char *net_get_info(const char *url, int max_size, int *out_len, net_response *response,
                    net_progress_fn cb, void *ud, char *err, int errlen);
 
-/* Streams a decoded response to an ephemeral file, bounded after decompression. */
+/* Streams a decoded response to an ephemeral file, bounded after decompression
+   (at most 64 MB): a longer one is cut there, and response->truncated set. */
 int net_get_file(const char *, const char *, int, net_response *, net_progress_fn, void *, char *, int);
 
 /* Like net_get_file, sending `form` (application/x-www-form-urlencoded) by POST. */
@@ -78,6 +80,10 @@ int net_post_file(const char *url, const char *form, const char *path, int maxim
 void net_set_cookies(const char *path);
 void net_save_cookies(void);
 void net_clear_cookies(void);
+/* A web page's document.cookie: the cookies sent to `url`, but not HttpOnly
+   ones, and its scripts setting one (see jar.h). 0 on success. */
+int net_cookie_string(const char *url, char *out, int size);
+int net_cookie_set(const char *url, const char *cookie);
 
 /* Keeps a validated .part download after interruption; resumes using If-Range.
    A refused or changed range is retried from the start. */

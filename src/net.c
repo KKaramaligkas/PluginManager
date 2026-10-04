@@ -38,6 +38,7 @@
 
 #include "fs.h"
 #include "gfx.h"
+#include "jar.h"
 #include "net.h"
 #include "http_policy.h"
 #include "transfer.h"
@@ -528,6 +529,7 @@ typedef struct {
     char *mem;
     int len, cap, max;
     int too_big, write_error;
+    int keep_partial;       /* a file past `max` keeps its first `max` bytes */
     net_progress_fn cb;
     void *ud;
     tlsdiag tls;            /* the certificate check of the last connection */
@@ -578,6 +580,18 @@ void net_clear_cookies(void)
     cookies_loaded = 1;     /* nothing left to load */
 }
 
+int net_cookie_string(const char *url, char *out, int size)
+{
+    if (size < 1) return -1;
+    out[0] = 0;
+    return inited && size > 0 ? jar_cookie_string(shared(), url, time(NULL), out, (size_t)size) : -1;
+}
+
+int net_cookie_set(const char *url, const char *cookie)
+{
+    return inited && cookie_path[0] ? jar_cookie_set(shared(), url, cookie, time(NULL)) : -1;
+}
+
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     xfer *x = userdata;
@@ -585,7 +599,12 @@ static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
     size_t n = size * nmemb;
     if (x->download) return resume_write(x->download, ptr, n);
     if (x->f >= 0) {
-        if (n > (size_t)(x->max - x->len)) { x->too_big = 1; return 0; }
+        if (n > (size_t)(x->max - x->len)) {
+            int rest = x->max - x->len;
+            if (x->keep_partial && rest > 0 && fs_write(x->f, ptr, rest) == rest) x->len += rest;
+            x->too_big = 1;
+            return 0;
+        }
         if (fs_write(x->f, ptr, (int)n) != (int)n) {
             x->write_error = 1;
             return 0;
@@ -759,6 +778,11 @@ static int perform(const char *url, xfer *x, char *err, int errlen)
         return -1;
     }
 
+    /* a page longer than its limit: the part that fit */
+    if (res == CURLE_WRITE_ERROR && x->too_big && x->keep_partial && !x->write_error) {
+        res = CURLE_OK;
+        if (x->response) x->response->truncated = 1;
+    }
     if (res == CURLE_OK && x->response && x->response->url_too_long) {
         snprintf(err, errlen, "The redirected address is too long"); return -1;
     }
@@ -861,13 +885,13 @@ char *net_get(const char *url, int max_size, int *out_len, net_progress_fn cb, v
 static int request_file(const char *url, const char *post, const char *path, int maximum, net_response *response,
                         net_progress_fn cb, void *ud, char *err, int errlen)
 {
-    if (maximum < 1 || maximum > 8 * 1024 * 1024) {
+    if (maximum < 1 || maximum > 64 * 1024 * 1024) {
         snprintf(err, errlen, "Invalid page limit"); return -1;
     }
     if (cb && cb(ud, 0, -1)) { snprintf(err, errlen, "Cancelled"); return -1; }
     if (response) memset(response, 0, sizeof(*response));
     xfer x; memset(&x, 0, sizeof(x));
-    x.f = fs_open(path, FS_WRITE); x.max = maximum; x.response = response;
+    x.f = fs_open(path, FS_WRITE); x.max = maximum; x.response = response; x.keep_partial = 1;
     x.cb = cb; x.ud = ud; x.total = -1;
     x.post = post; x.post_len = post ? (long)strlen(post) : 0;
     if (x.f < 0) { snprintf(err, errlen, "Could not create the page cache"); return -1; }
